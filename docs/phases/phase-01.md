@@ -21,6 +21,8 @@ The value of this phase is that every later phase inherits its conventions. Conf
 - ASGI application lifespan for startup and shutdown work.
 - pytest fixtures and testing an ASGI application with an HTTP client.
 
+
+
 ## Files to create
 
 ```text
@@ -65,6 +67,8 @@ uv add --dev pytest httpx
 Nothing else. `ruff` and `mypy` are deferred to the CI phase, and adding them now would be a silent change to the specified stack.
 
 ## Implementation steps
+
+
 
 ### 1. Initialize the project
 
@@ -167,18 +171,20 @@ Confirm `.env` is git-ignored and `.env.example` is not.
 
 ## Tests
 
-| Test | Asserts |
-| --- | --- |
-| `test_health_returns_ok` | `GET /health` returns 200 and exactly `{"status": "ok"}` |
-| `test_openapi_schema_available` | `/openapi.json` returns 200 and includes the `/health` path |
-| `test_docs_available` | `/docs` returns 200 |
-| `test_settings_defaults` | `Settings()` produces expected defaults with a clean environment |
-| `test_settings_from_environment` | An environment variable overrides a default |
-| `test_settings_rejects_invalid_env` | An invalid `APP_ENV` raises a validation error |
-| `test_unknown_route_error_shape` | A missing route returns the error envelope, not FastAPI's default shape |
+
+| Test                                        | Asserts                                                                                                                  |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `test_health_returns_ok`                    | `GET /health` returns 200 and exactly `{"status": "ok"}`                                                                 |
+| `test_openapi_schema_available`             | `/openapi.json` returns 200 and includes the `/health` path                                                              |
+| `test_docs_available`                       | `/docs` returns 200                                                                                                      |
+| `test_settings_defaults`                    | `Settings()` produces expected defaults with a clean environment                                                         |
+| `test_settings_from_environment`            | An environment variable overrides a default                                                                              |
+| `test_settings_rejects_invalid_env`         | An invalid `APP_ENV` raises a validation error                                                                           |
+| `test_unknown_route_error_shape`            | A missing route returns the error envelope, not FastAPI's default shape                                                  |
 | `test_unhandled_exception_returns_envelope` | A route raising an exception returns 500 in the envelope with a request identifier, and the exception does not propagate |
-| `test_request_id_echoed` | A supplied `X-Request-ID` is returned on the response |
-| `test_request_id_generated` | A request without the header still receives one |
+| `test_request_id_echoed`                    | A supplied `X-Request-ID` is returned on the response                                                                    |
+| `test_request_id_generated`                 | A request without the header still receives one                                                                          |
+
 
 `tests/conftest.py` provides a `client` fixture wrapping the application in Starlette's `TestClient`, and sets `APP_ENV=test` so tests never read a developer's local `.env`.
 
@@ -218,8 +224,8 @@ In the server console, confirm log lines are single-line JSON, include the corre
 
 ## Definition of done
 
-- [ ] `backend/pyproject.toml` and `backend/uv.lock` exist; no `requirements.txt` anywhere in the repository
-- [ ] Dependencies are exactly `fastapi`, `uvicorn[standard]`, `pydantic-settings`, plus dev `pytest` and `httpx`
+- [x] `backend/pyproject.toml` and `backend/uv.lock` exist; no `requirements.txt` anywhere in the repository
+- [x] Dependencies are exactly `fastapi`, `uvicorn[standard]`, `pydantic-settings`, plus dev `pytest` and `httpx`
 - [ ] `uv run uvicorn app.main:app --reload` starts the application without warnings
 - [ ] `GET /health` returns 200 and exactly `{"status": "ok"}`
 - [ ] `/docs` and `/redoc` render, and `/openapi.json` includes the health path
@@ -234,6 +240,8 @@ In the server console, confirm log lines are single-line JSON, include the corre
 - [ ] Manual verification steps all confirmed
 - [ ] No code exists for any future phase
 
+
+
 ## Git commit
 
 ```text
@@ -244,6 +252,8 @@ environment-based settings, structured JSON logging with request
 correlation identifiers, a consistent error envelope, the health
 endpoint, and the pytest suite covering them.
 ```
+
+
 
 ## Notes for the next phase
 
