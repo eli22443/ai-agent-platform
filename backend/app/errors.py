@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -54,7 +55,7 @@ def _detail_message(detail: Any) -> str:
 
 
 async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, HTTPException)
+    assert isinstance(exc, StarletteHTTPException)
     message = _detail_message(exc.detail)
     return JSONResponse(
         status_code=exc.status_code,
@@ -94,5 +95,6 @@ async def unhandled_exception_handler(
 
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
