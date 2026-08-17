@@ -3,18 +3,23 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.logging import request_id_ctx
 
 logger = logging.getLogger(__name__)
 
 
-def _request_id() -> str | None:
-    return request_id_ctx.get()
+def _request_id(request: Request | None = None) -> str | None:
+    from_ctx = request_id_ctx.get()
+    if from_ctx:
+        return from_ctx
+    if request is not None:
+        return getattr(request.state, "request_id", None)
+    return None
 
 
 def error_envelope(
@@ -22,12 +27,15 @@ def error_envelope(
     code: str,
     message: str,
     request_id: str | None = None,
+    request: Request | None = None,
 ) -> dict[str, Any]:
     return {
         "error": {
             "code": code,
             "message": message,
-            "request_id": request_id if request_id is not None else _request_id(),
+            "request_id": (
+                request_id if request_id is not None else _request_id(request)
+            ),
         }
     }
 
@@ -54,6 +62,16 @@ def _detail_message(detail: Any) -> str:
     return str(detail)
 
 
+def _correlation_headers(
+    request: Request, extra: dict[str, str] | None = None
+) -> dict[str, str] | None:
+    headers = dict(extra or {})
+    request_id = _request_id(request)
+    if request_id:
+        headers["X-Request-ID"] = request_id
+    return headers or None
+
+
 async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, StarletteHTTPException)
     message = _detail_message(exc.detail)
@@ -62,8 +80,9 @@ async def http_exception_handler(request: Request, exc: Exception) -> JSONRespon
         content=error_envelope(
             code=_http_error_code(exc.status_code),
             message=message,
+            request=request,
         ),
-        headers=getattr(exc, "headers", None),
+        headers=_correlation_headers(request, getattr(exc, "headers", None)),
     )
 
 
@@ -76,7 +95,9 @@ async def validation_exception_handler(
         content=error_envelope(
             code="validation_error",
             message="Request validation failed.",
+            request=request,
         ),
+        headers=_correlation_headers(request),
     )
 
 
@@ -89,7 +110,9 @@ async def unhandled_exception_handler(
         content=error_envelope(
             code="internal_error",
             message="An unexpected error occurred.",
+            request=request,
         ),
+        headers=_correlation_headers(request),
     )
 
 
