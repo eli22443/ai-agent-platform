@@ -19,8 +19,8 @@ Rules that apply to every phase:
 
 | Phase | Name | Adds infrastructure | Status |
 | --- | --- | --- | --- |
-| 1 | FastAPI foundation | None | Not started |
-| 2 | Task API | None | Not started |
+| 1 | FastAPI foundation | None | Complete |
+| 2 | Task API | None | Active |
 | 3 | PostgreSQL via Supabase | PostgreSQL | Not started |
 | 4 | Repository management | Git CLI | Not started |
 | 5 | Repository context tools | ripgrep | Not started |
@@ -76,6 +76,8 @@ Statuses are `pending`, `running`, `completed`, `failed`.
 **Definition of done.** Task creation validates the repository URL and rejects malformed input with 422; a task identifier is returned; the status model is defined in one place; the service layer holds the logic and routes stay thin; the in-memory store is clearly documented as a Phase 3 placeholder and is not described as persistence; tests cover creation, retrieval, validation failure, and the not-found path.
 
 **Commit.** `feat: add task API with request validation and status model`
+
+Full specification: [phase-02.md](phases/phase-02.md).
 
 ## Phase 3 — PostgreSQL via Supabase
 

@@ -120,6 +120,18 @@ The architecture, agent design, threat model, evaluation approach, and roadmap w
 
 Rationale: the security posture and phase boundaries are the parts most expensive to retrofit. The cost is that some documented details will be wrong, which is why every document states its status and is expected to be revised as phases land.
 
+### D18 — Unversioned API paths
+
+Domain routes are unversioned: `/tasks`, not `/api/v1/tasks`. Health checks stay unversioned regardless, as they already are.
+
+Decided at the start of Phase 2, resolving open item O4.
+
+Rationale: the original specification shows unversioned `GET /health` and `POST /tasks`, and the platform has no external clients, so a version prefix would carry cost without buying compatibility for anyone. It also keeps the route declarations consistent, since every route module owns its full path with no prefix applied by `app/api/router.py`.
+
+Rejected: an `/api/v1` prefix from the start, which is the safer default for an API with real consumers.
+
+Revisit before: exposing the API publicly or building any client against it. Adding a prefix later means changing every path, so it is much cheaper to do while this project is the only caller.
+
 ## Open items
 
 These must be resolved explicitly, not by assumption during implementation.
@@ -154,11 +166,11 @@ Depends on: whether a Supabase project will be provisioned.
 
 Decide by: the start of Phase 3.
 
-### O4 — API versioning
+### O4 — API versioning — resolved
 
-The specification shows unversioned `GET /health` and `POST /tasks`, and the documentation follows it. Whether to introduce an `/api/v1` prefix for domain routes before any public exposure is open. Health checks conventionally stay unversioned regardless.
+Resolved at the start of Phase 2 in favour of unversioned paths. See D18.
 
-Decide by: the start of Phase 2, since it determines the route prefix.
+The entry is kept rather than deleted so that the numbering of O5 through O8 stays stable and references to them elsewhere do not rot.
 
 ### O5 — Lint and type tooling
 
@@ -191,6 +203,7 @@ Decide by: implementation of Phase 8.
 | Item | Introduced | Cost | Repaid |
 | --- | --- | --- | --- |
 | In-memory task store | Phase 2 | State lost on restart; single-process only | Phase 3 |
+| Validation errors omit the offending field | Phase 2 | A 422 says only "Request validation failed."; a client cannot tell which field was wrong or why | Deferred; revisit at Phase 15, or sooner if it slows development |
 | Synchronous agent execution in the request | Phase 6 | Long-held HTTP connections, no progress visibility | Phase 9 |
 | No authentication | Phase 1 | Anyone with network access can invoke the API | Phase 12, or on public exposure |
 | Public repositories only | Phase 4 | Cannot handle private repositories | Phase 12 |
