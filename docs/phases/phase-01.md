@@ -226,16 +226,16 @@ In the server console, confirm log lines are single-line JSON, include the corre
 
 - [x] `backend/pyproject.toml` and `backend/uv.lock` exist; no `requirements.txt` anywhere in the repository
 - [x] Dependencies are exactly `fastapi`, `uvicorn[standard]`, `pydantic-settings`, plus dev `pytest` and `httpx`
-- [ ] `uv run uvicorn app.main:app --reload` starts the application without warnings
-- [ ] `GET /health` returns 200 and exactly `{"status": "ok"}`
-- [ ] `/docs` and `/redoc` render, and `/openapi.json` includes the health path
+- [x] `uv run uvicorn app.main:app --reload` starts the application without warnings
+- [x] `GET /health` returns 200 and exactly `{"status": "ok"}`
+- [x] `/docs` and `/redoc` render, and `/openapi.json` includes the health path
 - [ ] Settings load from the environment with validated types and sensible defaults
 - [ ] No module reads `os.environ` directly; configuration flows through `Settings`
 - [ ] Logs are structured, single-line JSON at the configured level, carrying the correlation identifier
 - [ ] Every request has a correlation identifier, echoed in the response header
 - [ ] `HTTPException`, validation errors, and unhandled exceptions all produce the same error envelope
 - [ ] Unhandled exceptions log a traceback server-side and return a generic message to the client
-- [ ] `.env.example` is committed with names only; `.env` is git-ignored
+- [x] `.env.example` is committed with names only; `.env` is git-ignored
 - [ ] `uv run pytest` passes with every test listed above
 - [ ] Manual verification steps all confirmed
 - [ ] No code exists for any future phase
