@@ -47,3 +47,5 @@ logs/
 
 # Reference material: large binary PDFs and archives, not part of the codebase
 .context/
+
+docs/phases/
