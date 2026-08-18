@@ -1,7 +1,9 @@
 
 from app.services.task_service import TaskService
+from app.database.session import get_db
+from sqlalchemy.orm import Session
+from fastapi import Depends
 
-_task_service = TaskService()
 
-def get_task_service() -> TaskService:
-    return _task_service
+def get_task_service(db: Session = Depends(get_db)) -> TaskService:
+    return TaskService(db)

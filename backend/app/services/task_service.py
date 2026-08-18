@@ -1,13 +1,17 @@
-"""In-memory task store.
+"""Task persistence against PostgreSQL.
 
-Storage is a process-local dictionary. It is lost on restart and is not
-shared across workers. Phase 3 replaces this with PostgreSQL.
+The service maps database rows to the domain Task dataclass. It does not
+commit: the request-scoped session in get_db() owns the transaction.
 """
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.database.models import Repository, TaskRecord
 from app.schemas.task import TaskStatus
 
 
@@ -18,24 +22,58 @@ class Task:
     instruction: str
     status: TaskStatus
     created_at: datetime
-    
+
+
 class TaskService:
-    def __init__(self) -> None:
-        self._tasks: dict[UUID, Task] = {}
-        
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
     def create(self, repository_url: str, instruction: str) -> Task:
-        task = Task(
-            id=uuid4(),
-            repository_url=repository_url,
+        repository = self._session.scalars(
+            select(Repository).where(Repository.url == repository_url)
+        ).first()
+        if repository is None:
+            repository = Repository(url=repository_url)
+            self._session.add(repository)
+            self._session.flush()
+
+        now = datetime.now(UTC)
+        record = TaskRecord(
+            repository_id=repository.id,
             instruction=instruction,
-            status=TaskStatus.PENDING,
-            created_at=datetime.now(UTC)
+            status=TaskStatus.PENDING.value,
+            created_at=now,
+            updated_at=now,
         )
-        self._tasks[task.id] = task
-        return task
-    
+        self._session.add(record)
+        self._session.flush()
+        return _to_task(record, repository)
+
     def get(self, task_id: UUID) -> Task | None:
-        return self._tasks.get(task_id)
-    
+        row = self._session.execute(
+            select(TaskRecord, Repository)
+            .join(Repository, TaskRecord.repository_id == Repository.id)
+            .where(TaskRecord.id == task_id)
+        ).first()
+        if row is None:
+            return None
+        record, repository = row
+        return _to_task(record, repository)
+
     def list_all(self) -> list[Task]:
-        return list(self._tasks.values())
+        rows = self._session.execute(
+            select(TaskRecord, Repository).join(
+                Repository, TaskRecord.repository_id == Repository.id
+            )
+        ).all()
+        return [_to_task(record, repository) for record, repository in rows]
+
+
+def _to_task(record: TaskRecord, repository: Repository) -> Task:
+    return Task(
+        id=record.id,
+        repository_url=repository.url,
+        instruction=record.instruction,
+        status=TaskStatus(record.status),
+        created_at=record.created_at,
+    )
