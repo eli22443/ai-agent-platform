@@ -4,7 +4,7 @@
 
 Fifteen phases, executed in order. Each phase produces working software, has its own tests, and ends in a single commit. A phase introduces only the components it needs; nothing is stubbed in advance because it appears in the target architecture.
 
-This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md` covering objective, concepts, files, dependencies, implementation steps, tests, manual verification, definition of done, and commit message. Only [phase-01.md](phases/phase-01.md) exists so far, which is deliberate: writing detailed specs for phases whose inputs are not yet known produces plans that are wrong by the time they are used.
+This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md), [Phase 2](phases/phase-02.md), and [Phase 3](phases/phase-03.md). Later phases get a `phase-NN.md` when they become active.
 
 Rules that apply to every phase:
 
@@ -20,8 +20,8 @@ Rules that apply to every phase:
 | Phase | Name | Adds infrastructure | Status |
 | --- | --- | --- | --- |
 | 1 | FastAPI foundation | None | Complete |
-| 2 | Task API | None | Active |
-| 3 | PostgreSQL via Supabase | PostgreSQL | Not started |
+| 2 | Task API | None | Complete |
+| 3 | PostgreSQL via Supabase | PostgreSQL | Active |
 | 4 | Repository management | Git CLI | Not started |
 | 5 | Repository context tools | ripgrep | Not started |
 | 6 | OpenAI agent loop | OpenAI API | Not started |
@@ -91,11 +91,13 @@ Full specification: [phase-02.md](phases/phase-02.md).
 
 **Tables.** `repositories`, `tasks`, `agent_runs` as sketched in [architecture.md](architecture.md).
 
-**Notes.** Supabase is managed PostgreSQL here and nothing more; Supabase Auth is not introduced. If connecting through Supabase's transaction pooler, verify prepared-statement behavior and configure the driver accordingly, and record what was needed in [decisions.md](decisions.md).
+**Notes.** Development uses local PostgreSQL via apt (D19). Supabase remains the managed/production target; Supabase Auth is not introduced. Transaction-pooler settings (O7) wait until a Supabase `DATABASE_URL` is used. Persistence lives under `app/database/`; do not add `app/repositories/task_repository.py` (that package name is reserved for Phase 4 Git).
 
 **Definition of done.** Migrations create the schema from empty; the application reads and writes tasks through the database; sessions are request-scoped and always closed; no credential is stored in any row; `DATABASE_URL` comes from the environment; tests run against a real test database and clean up after themselves.
 
 **Commit.** `feat: add PostgreSQL persistence with SQLAlchemy and Alembic`
+
+Full specification: [phase-03.md](phases/phase-03.md).
 
 ## Phase 4 — Repository management
 

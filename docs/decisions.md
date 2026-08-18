@@ -132,6 +132,20 @@ Rejected: an `/api/v1` prefix from the start, which is the safer default for an 
 
 Revisit before: exposing the API publicly or building any client against it. Adding a prefix later means changing every path, so it is much cheaper to do while this project is the only caller.
 
+### D19 — Local apt PostgreSQL for development
+
+Development and tests for Phase 3 use PostgreSQL installed with `apt` on WSL (`postgresql://` via `psycopg` v3). Two databases: `ai_agent_platform` for local runs and `ai_agent_platform_test` for pytest.
+
+Decided at the start of Phase 3, resolving open item O3.
+
+Rationale: Docker is unreachable from this distro, so a containerized Postgres is not available. A hosted Supabase project would match production (D6) but requires a provisioned project and makes every test a network call. A system install is local, offline-capable, and enough to learn SQLAlchemy and Alembic.
+
+Rejected: hosted Supabase as the Phase 3 development target; Docker Compose Postgres (blocked by O1).
+
+D6 is unchanged: managed/production PostgreSQL remains Supabase. This decision is the development database only. SQLAlchemy stays sync to match the existing FastAPI routes; async sessions are not introduced here.
+
+This is how the Phase 2 in-memory task store is replaced. The debt row is repaid when the Phase 3 implementation lands, not when this decision is recorded.
+
 ## Open items
 
 These must be resolved explicitly, not by assumption during implementation.
@@ -156,15 +170,9 @@ Options: `sudo apt install ripgrep`, or pin a specific ripgrep binary in the run
 
 Decide by: the start of Phase 5.
 
-### O3 — Supabase hosted versus local PostgreSQL for development
+### O3 — Supabase hosted versus local PostgreSQL for development — resolved
 
-Recommendation: develop against a hosted Supabase project from Phase 3. It matches the production target, and with Docker unavailable a local PostgreSQL would require a direct system install.
-
-Counter-consideration: hosted development means tests hit the network and a live project must exist before Phase 3 can start.
-
-Depends on: whether a Supabase project will be provisioned.
-
-Decide by: the start of Phase 3.
+Resolved at the start of Phase 3 in favour of local PostgreSQL via apt. See D19.
 
 ### O4 — API versioning — resolved
 
@@ -186,11 +194,11 @@ The `stock-market-master` fixture has one test file, so test-repair tasks requir
 
 Decide by: the start of Phase 11.
 
-### O7 — Supabase connection pooler driver configuration
+### O7 — Supabase connection pooler driver configuration — deferred
 
-Connecting through Supabase's transaction pooler constrains prepared-statement use, which affects driver configuration. The chosen driver, `psycopg`, must be verified against the pooler and the required settings recorded here.
+Local apt PostgreSQL (D19) has no transaction pooler, so prepared-statement settings are not a Phase 3 blocker.
 
-Decide by: implementation of Phase 3.
+Decide by: the first time `DATABASE_URL` points at Supabase's transaction pooler (expected at production deployment, Phase 14). Verify `psycopg` against the pooler then and record the required settings here.
 
 ### O8 — Chunking strategy for code embeddings
 
@@ -202,7 +210,7 @@ Decide by: implementation of Phase 8.
 
 | Item | Introduced | Cost | Repaid |
 | --- | --- | --- | --- |
-| In-memory task store | Phase 2 | State lost on restart; single-process only | Phase 3 |
+| In-memory task store | Phase 2 | State lost on restart; single-process only | Phase 3 (repaid when implementation lands; spec in [phase-03.md](phases/phase-03.md)) |
 | Validation errors omit the offending field | Phase 2 | A 422 says only "Request validation failed."; a client cannot tell which field was wrong or why | Deferred; revisit at Phase 15, or sooner if it slows development |
 | Synchronous agent execution in the request | Phase 6 | Long-held HTTP connections, no progress visibility | Phase 9 |
 | No authentication | Phase 1 | Anyone with network access can invoke the API | Phase 12, or on public exposure |
