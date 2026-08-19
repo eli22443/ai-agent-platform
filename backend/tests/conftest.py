@@ -1,4 +1,6 @@
 import os
+import shutil
+import socket
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -19,9 +21,52 @@ from app.config import get_settings
 
 get_settings.cache_clear()
 
+from app.api.dependencies import get_repository_service
 from app.main import create_app
+from app.repositories.errors import CloneError
+from app.repositories.service import RepositoryService
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+ALLOWED_HOSTS = ("github.com", "gitlab.com", "bitbucket.org")
+
+
+class FakeGitClient:
+    def __init__(
+        self,
+        fixture: Path,
+        *,
+        fail: bool = False,
+        head_sha: str = "abc123def456",
+        current_branch: str | None = "main",
+    ) -> None:
+        self._fixture = fixture
+        self._fail = fail
+        self._head_sha = head_sha
+        self._current_branch = current_branch
+
+    def clone(self, url: str, dest: Path) -> None:
+        if self._fail:
+            raise CloneError("clone failed")
+        shutil.copytree(self._fixture, dest, dirs_exist_ok=True)
+
+    def head_sha(self, dest: Path) -> str:
+        return self._head_sha
+
+    def current_branch(self, dest: Path) -> str | None:
+        return self._current_branch
+
+
+def public_getaddrinfo(host: str, port: int, *args, **kwargs):
+    return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.1.1.1", port))]
+
+
+def write_repo_fixture(root: Path) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "README.md").write_text("# demo")
+    src = root / "src"
+    src.mkdir()
+    (src / "main.py").write_text("print('hi')")
+    return root
 
 
 def _truncate(engine: Engine) -> None:
@@ -69,10 +114,48 @@ def db_session(session_factory) -> Iterator[Session]:
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+def fixture_repo(tmp_path: Path) -> Path:
+    return write_repo_fixture(tmp_path / "fixture")
+
+
+@pytest.fixture
+def repository_service(
+    tmp_path: Path, fixture_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> RepositoryService:
+    monkeypatch.setattr("socket.getaddrinfo", public_getaddrinfo)
+    return RepositoryService(
+        FakeGitClient(fixture_repo),
+        tmp_path / "workspaces",
+        ALLOWED_HOSTS,
+        timeout=30,
+        max_size_mb=200,
+    )
+
+
+@pytest.fixture
+def client(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fixture_repo: Path
+) -> Iterator[TestClient]:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DATABASE_URL", TEST_DATABASE_URL)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspaces"))
+    monkeypatch.setattr("socket.getaddrinfo", public_getaddrinfo)
     get_settings.cache_clear()
+
+    fake_git = FakeGitClient(fixture_repo)
+
+    def override_repository_service() -> RepositoryService:
+        settings = get_settings()
+        return RepositoryService(
+            fake_git,
+            settings.workspace_root,
+            settings.git_allowed_hosts,
+            timeout=settings.git_clone_timeout_seconds,
+            max_size_mb=settings.max_repo_size_mb,
+        )
+
     app = create_app()
+    app.dependency_overrides[get_repository_service] = override_repository_service
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
+    get_settings.cache_clear()

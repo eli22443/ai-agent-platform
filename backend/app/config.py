@@ -1,7 +1,11 @@
 from functools import lru_cache
-from typing import Literal
+from pathlib import Path
+from typing import Annotated, Literal
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+_DEFAULT_GIT_ALLOWED_HOSTS = ("github.com", "gitlab.com", "bitbucket.org")
 
 
 class Settings(BaseSettings):
@@ -12,6 +16,17 @@ class Settings(BaseSettings):
     app_env: Literal["local", "test", "production"] = "local"
     log_level: str = "INFO"
     debug: bool = False
+    workspace_root: Path = Path(".workspaces")
+    git_clone_timeout_seconds: int = 120
+    max_repo_size_mb: int = 200
+    git_allowed_hosts: Annotated[tuple[str, ...], NoDecode] = _DEFAULT_GIT_ALLOWED_HOSTS
+
+    @field_validator("git_allowed_hosts", mode="before")
+    @classmethod
+    def parse_git_allowed_hosts(cls, value: object) -> object:
+        if isinstance(value, str):
+            return tuple(host.strip() for host in value.split(",") if host.strip())
+        return value
 
 
 @lru_cache
