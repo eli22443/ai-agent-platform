@@ -4,7 +4,7 @@
 
 Fifteen phases, executed in order. Each phase produces working software, has its own tests, and ends in a single commit. A phase introduces only the components it needs; nothing is stubbed in advance because it appears in the target architecture.
 
-This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md), [Phase 2](phases/phase-02.md), and [Phase 3](phases/phase-03.md). Later phases get a `phase-NN.md` when they become active.
+This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md), [Phase 2](phases/phase-02.md), [Phase 3](phases/phase-03.md), and [Phase 4](phases/phase-04.md). Later phases get a `phase-NN.md` when they become active.
 
 Rules that apply to every phase:
 
@@ -21,8 +21,8 @@ Rules that apply to every phase:
 | --- | --- | --- | --- |
 | 1 | FastAPI foundation | None | Complete |
 | 2 | Task API | None | Complete |
-| 3 | PostgreSQL via Supabase | PostgreSQL | Active |
-| 4 | Repository management | Git CLI | Not started |
+| 3 | PostgreSQL via Supabase | PostgreSQL | Complete |
+| 4 | Repository management | Git CLI | Active |
 | 5 | Repository context tools | ripgrep | Not started |
 | 6 | OpenAI agent loop | OpenAI API | Not started |
 | 7 | Agent runs | None | Not started |
@@ -109,9 +109,11 @@ Full specification: [phase-03.md](phases/phase-03.md).
 
 **Dependencies.** None in Python; requires the `git` binary.
 
-**Definition of done.** A public HTTPS repository clones into an isolated workspace with a depth limit, a size cap, and a timeout; URL validation rejects non-Git schemes, private and loopback addresses, and the cloud metadata address, with tests for each rejection; the service returns a structure summary including file count, languages, and entry points; workspaces are removed on completion and failure; the Git CLI is invoked only from this layer; no route calls Git directly.
+**Definition of done.** A public HTTPS repository clones into an isolated workspace with a depth limit, a size cap, and a timeout; URL validation rejects non-Git schemes, private and loopback addresses, and the cloud metadata address, with tests for each rejection; the service returns a structure summary including file count, languages, and entry points; workspaces are removed on clone failure and kept on success for Phase 5; the Git CLI is invoked only from this layer; no route calls Git directly.
 
 **Commit.** `feat: add repository service with validated cloning and workspace isolation`
+
+Full specification: [phase-04.md](phases/phase-04.md).
 
 ## Phase 5 — Repository context tools
 

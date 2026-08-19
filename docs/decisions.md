@@ -146,6 +146,18 @@ D6 is unchanged: managed/production PostgreSQL remains Supabase. This decision i
 
 This is how the Phase 2 in-memory task store is replaced. The debt row is repaid when the Phase 3 implementation lands, not when this decision is recorded.
 
+### D20 — HTTPS allow-list and post-DNS SSRF checks for clone URLs
+
+Clone URLs must be `https` with a hostname on a configurable allow-list (default `github.com`, `gitlab.com`, `bitbucket.org`). After `getaddrinfo`, every resolved address is checked: reject loopback, RFC1918, link-local, unique-local, and `169.254.169.254`. URLs with userinfo, `file://`, `ssh://`, `http://`, and scp-style syntax are rejected.
+
+Decided at the start of Phase 4. Implements the Phase 4 controls in [security.md](security.md).
+
+Rationale: Phase 2 `HttpUrl` only checks syntax. A clone is a server-side fetch; the hostname string is not a sufficient allow-list if DNS returns a private address.
+
+Rejected: allowing any public HTTPS host (broader SSRF surface); `git://` (unencrypted); cloning `file://` in tests as a production code path.
+
+Private repositories remain out of scope (existing debt, Phase 12).
+
 ## Open items
 
 These must be resolved explicitly, not by assumption during implementation.
@@ -210,8 +222,9 @@ Decide by: implementation of Phase 8.
 
 | Item | Introduced | Cost | Repaid |
 | --- | --- | --- | --- |
-| In-memory task store | Phase 2 | State lost on restart; single-process only | Phase 3 (repaid when implementation lands; spec in [phase-03.md](phases/phase-03.md)) |
+| In-memory task store | Phase 2 | State lost on restart; single-process only | Phase 3 (implementation landed) |
 | Validation errors omit the offending field | Phase 2 | A 422 says only "Request validation failed."; a client cannot tell which field was wrong or why | Deferred; revisit at Phase 15, or sooner if it slows development |
+| Synchronous clone on `POST /tasks` | Phase 4 | HTTP request stays open for `git clone`; timeouts feel like API failures | Phase 9 |
 | Synchronous agent execution in the request | Phase 6 | Long-held HTTP connections, no progress visibility | Phase 9 |
 | No authentication | Phase 1 | Anyone with network access can invoke the API | Phase 12, or on public exposure |
 | Public repositories only | Phase 4 | Cannot handle private repositories | Phase 12 |
