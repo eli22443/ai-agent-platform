@@ -132,9 +132,12 @@ def repository_service(
     )
 
 
-@pytest.fixture
-def client(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fixture_repo: Path
+def _api_client(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fixture_repo: Path,
+    *,
+    clone_fails: bool,
 ) -> Iterator[TestClient]:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DATABASE_URL", TEST_DATABASE_URL)
@@ -142,7 +145,7 @@ def client(
     monkeypatch.setattr("socket.getaddrinfo", public_getaddrinfo)
     get_settings.cache_clear()
 
-    fake_git = FakeGitClient(fixture_repo)
+    fake_git = FakeGitClient(fixture_repo, fail=clone_fails)
 
     def override_repository_service() -> RepositoryService:
         settings = get_settings()
@@ -159,3 +162,17 @@ def client(
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def client(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fixture_repo: Path
+) -> Iterator[TestClient]:
+    yield from _api_client(monkeypatch, tmp_path, fixture_repo, clone_fails=False)
+
+
+@pytest.fixture
+def clone_failing_client(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fixture_repo: Path
+) -> Iterator[TestClient]:
+    yield from _api_client(monkeypatch, tmp_path, fixture_repo, clone_fails=True)

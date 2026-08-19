@@ -2,7 +2,7 @@
 
 ## Status
 
-Living document. It is written ahead of implementation so that controls are designed in rather than retrofitted, and it is updated whenever a phase changes the platform's exposure. Nothing here describes an implemented control yet; the "Introduced" column states when each control is due.
+Living document. It is written ahead of implementation so that controls are designed in rather than retrofitted, and it is updated whenever a phase changes the platform's exposure. Phase 4 repository URL validation, post-DNS address checks, clone timeout, and size cap are implemented. Later controls remain scheduled in the "Introduced" column.
 
 ## Central premise
 

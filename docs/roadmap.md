@@ -22,7 +22,7 @@ Rules that apply to every phase:
 | 1 | FastAPI foundation | None | Complete |
 | 2 | Task API | None | Complete |
 | 3 | PostgreSQL via Supabase | PostgreSQL | Complete |
-| 4 | Repository management | Git CLI | Active |
+| 4 | Repository management | Git CLI | Complete |
 | 5 | Repository context tools | ripgrep | Not started |
 | 6 | OpenAI agent loop | OpenAI API | Not started |
 | 7 | Agent runs | None | Not started |

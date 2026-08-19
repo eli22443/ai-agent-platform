@@ -1,8 +1,11 @@
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException
+
+from app.api.dependencies import get_task_service
+from app.repositories.errors import CloneError, InvalidRepositoryUrl
 from app.schemas.task import TaskCreateRequest, TaskResponse
 from app.services.task_service import Task, TaskService
-from app.api.dependencies import get_task_service
 
 
 router = APIRouter(tags=["tasks"])
@@ -12,7 +15,16 @@ def create_task(
     payload: TaskCreateRequest,
     service: TaskService = Depends(get_task_service)
 ) -> TaskResponse:
-    task = service.create(str(payload.repository_url), payload.instruction)
+    try:
+        task = service.create(str(payload.repository_url), payload.instruction)
+    except InvalidRepositoryUrl:
+        raise HTTPException(
+            status_code=400, detail="Repository URL is not allowed."
+        )
+    except CloneError:
+        raise HTTPException(
+            status_code=502, detail="Failed to clone repository."
+        )
     return _to_response(task)
     
     

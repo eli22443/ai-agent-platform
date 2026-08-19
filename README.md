@@ -9,9 +9,9 @@ Instruction: Find why the authentication tests are failing and explain how to fi
 
 ## Status
 
-**Documentation only. Phase 1 has not started and no application code exists yet.**
+Phases 1–4 are complete. `POST /tasks` persists a task, validates the repository URL against SSRF rules, shallow-clones a public HTTPS repository into an isolated workspace, and records branch and HEAD on the repository row.
 
-This repository currently contains the architecture, agent design, threat model, evaluation approach, decision log, and a 15-phase roadmap. Implementation begins with [Phase 1](docs/phases/phase-01.md).
+The next work is Phase 5 (repository context tools). See [docs/roadmap.md](docs/roadmap.md). Start the API with the commands in [Local setup](#local-setup).
 
 ## What it does
 
@@ -39,7 +39,7 @@ The agent investigates rather than guesses: it lists directories, searches the c
 | [docs/roadmap.md](docs/roadmap.md) | All 15 phases with definitions of done |
 | [docs/phases/phase-01.md](docs/phases/phase-01.md) | The active phase specification |
 
-Start with [docs/roadmap.md](docs/roadmap.md) for the plan, or [docs/architecture.md](docs/architecture.md) for the design.
+Start with [docs/roadmap.md](docs/roadmap.md) for the plan, or [docs/architecture.md](docs/architecture.md) for the design. The completed Phase 4 specification is [docs/phases/phase-04.md](docs/phases/phase-04.md).
 
 ## Technology
 
@@ -92,7 +92,7 @@ No frontend framework at any phase. Swagger UI at `/docs` is the demonstration s
 
 ## Local setup
 
-Available once Phase 1 lands:
+Available:
 
 ```bash
 cd backend
@@ -127,6 +127,7 @@ Set through the environment or a `.env` file in `backend/`. `.env` is git-ignore
 | `WORKSPACE_ROOT` | 4 | Directory holding cloned repository workspaces |
 | `GIT_CLONE_TIMEOUT_SECONDS` | 4 | Clone timeout |
 | `MAX_REPO_SIZE_MB` | 4 | Clone size cap |
+| `GIT_ALLOWED_HOSTS` | 4 | Comma-separated clone host allow-list |
 | `OPENAI_API_KEY` | 6 | OpenAI credential |
 | `OPENAI_MODEL` | 6 | Model used by the agent loop |
 | `AGENT_MAX_ITERATIONS` | 6 | Hard cap on agent loop turns |

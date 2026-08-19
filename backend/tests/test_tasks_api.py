@@ -144,3 +144,52 @@ def test_openapi_includes_task_paths(client):
     paths = response.json()["paths"]
     assert "/tasks" in paths
     assert "/tasks/{task_id}" in paths
+
+
+def test_create_task_rejects_localhost(client):
+    response = client.post(
+        "/tasks",
+        json={
+            "repository_url": "https://127.0.0.1/x",
+            "instruction": VALID_PAYLOAD["instruction"],
+        },
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert "detail" not in body
+    assert body["error"]["code"] == "bad_request"
+    assert body["error"]["message"] == "Repository URL is not allowed."
+    assert body["error"]["request_id"]
+
+
+def test_create_task_rejects_unknown_host(client):
+    response = client.post(
+        "/tasks",
+        json={
+            "repository_url": "https://evil.example/org/repo",
+            "instruction": VALID_PAYLOAD["instruction"],
+        },
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "bad_request"
+    assert body["error"]["message"] == "Repository URL is not allowed."
+    assert body["error"]["request_id"]
+
+
+def test_create_task_clone_error_returns_502(clone_failing_client):
+    response = clone_failing_client.post("/tasks", json=VALID_PAYLOAD)
+
+    assert response.status_code == 502
+    body = response.json()
+    assert "detail" not in body
+    assert body["error"]["message"] == "Failed to clone repository."
+    assert body["error"]["request_id"]
+
+    listed = clone_failing_client.get("/tasks")
+    assert listed.status_code == 200
+    tasks = listed.json()
+    assert len(tasks) == 1
+    assert tasks[0]["status"] == "failed"
