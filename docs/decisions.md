@@ -158,6 +158,16 @@ Rejected: allowing any public HTTPS host (broader SSRF surface); `git://` (unenc
 
 Private repositories remain out of scope (existing debt, Phase 12).
 
+### D21 — System ripgrep for `search_code`
+
+The `search_code` tool invokes ripgrep via `subprocess` using a binary resolved by `shutil.which(settings.ripgrep_path)` (default `"rg"`). Developers install with `sudo apt install ripgrep`. Cursor's bundled ripgrep under `~/.cursor-server` must not be used.
+
+Decided at the start of Phase 5, resolving open item O2.
+
+Rationale: Phase 5 tests and runtime need a stable binary on PATH in WSL and in future containers. Editor-bundled tools are not deployment dependencies.
+
+Rejected: vendoring a ripgrep binary in the repo (heavier maintenance); pure-Python search (slower, wrong learning goal for this phase).
+
 ## Open items
 
 These must be resolved explicitly, not by assumption during implementation.
@@ -174,13 +184,9 @@ Not an option: running repository code on the host and calling it a sandbox. See
 
 Decide by: the start of Phase 10.
 
-### O2 — System ripgrep is not installed
+### O2 — System ripgrep is not installed — resolved
 
-The only `rg` on `PATH` is Cursor's bundled binary inside `~/.cursor-server`. Application code must not depend on an editor-provided binary that can disappear on upgrade and will not exist in a container.
-
-Options: `sudo apt install ripgrep`, or pin a specific ripgrep binary in the runtime image and require it in local setup.
-
-Decide by: the start of Phase 5.
+Resolved at the start of Phase 5: require `sudo apt install ripgrep` and resolve `rg` via `shutil.which`. See D21.
 
 ### O3 — Supabase hosted versus local PostgreSQL for development — resolved
 

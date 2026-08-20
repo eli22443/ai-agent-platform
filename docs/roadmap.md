@@ -4,7 +4,7 @@
 
 Fifteen phases, executed in order. Each phase produces working software, has its own tests, and ends in a single commit. A phase introduces only the components it needs; nothing is stubbed in advance because it appears in the target architecture.
 
-This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md), [Phase 2](phases/phase-02.md), [Phase 3](phases/phase-03.md), and [Phase 4](phases/phase-04.md). Later phases get a `phase-NN.md` when they become active.
+This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 5](phases/phase-05.md). Later phases get a `phase-NN.md` when they become active.
 
 Rules that apply to every phase:
 
@@ -23,7 +23,7 @@ Rules that apply to every phase:
 | 2 | Task API | None | Complete |
 | 3 | PostgreSQL via Supabase | PostgreSQL | Complete |
 | 4 | Repository management | Git CLI | Complete |
-| 5 | Repository context tools | ripgrep | Not started |
+| 5 | Repository context tools | ripgrep | Active |
 | 6 | OpenAI agent loop | OpenAI API | Not started |
 | 7 | Agent runs | None | Not started |
 | 8 | Semantic retrieval | Pinecone | Not started |
@@ -130,6 +130,8 @@ Full specification: [phase-04.md](phases/phase-04.md).
 **Definition of done.** Every tool validates its input through a Pydantic model and exposes a JSON Schema; path confinement is implemented once and used by every tool, with tests covering `..` traversal, absolute paths, and symlinks escaping the workspace; ripgrep results are parsed into structured matches with file, line, and context; oversized output is truncated with the truncation flagged in the result; tool errors are returned as data rather than raised; the registry can list available tools with their schemas.
 
 **Commit.** `feat: add repository context tools with path confinement and ripgrep search`
+
+Full specification: [phase-05.md](phases/phase-05.md).
 
 ## Phase 6 — OpenAI agent loop
 
