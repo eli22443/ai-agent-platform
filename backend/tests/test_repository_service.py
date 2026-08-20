@@ -27,7 +27,7 @@ def test_fake_prepare_creates_workspace(
 
 def test_inspect_counts_and_languages(repository_service: RepositoryService):
     result = repository_service.prepare(CLONE_URL, uuid4())
-    assert result.inspect.file_count == 2
+    assert result.inspect.file_count == 3
     assert result.inspect.languages == ["Markdown", "Python"]
     assert result.inspect.entry_points == ["README.md"]
 

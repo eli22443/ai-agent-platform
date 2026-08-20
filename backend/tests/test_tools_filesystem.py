@@ -79,7 +79,7 @@ def test_read_file_on_fixture(tmp_path: Path) -> None:
 
     assert result.ok is True
     assert result.truncated is False
-    assert "print('hi')" in result.data["content"]
+    assert "UNIQUE_FIXTURE_TOKEN" in result.data["content"]
     assert result.data["start_line"] == 1
     assert result.data["end_line"] >= 1
 

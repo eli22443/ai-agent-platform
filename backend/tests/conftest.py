@@ -65,7 +65,8 @@ def write_repo_fixture(root: Path) -> Path:
     (root / "README.md").write_text("# demo")
     src = root / "src"
     src.mkdir()
-    (src / "main.py").write_text("print('hi')")
+    (src / "main.py").write_text('print("UNIQUE_FIXTURE_TOKEN")\n')
+    (src / "utils.py").write_text("def helper():\n    return 1\n")
     return root
 
 
