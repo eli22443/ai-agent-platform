@@ -124,7 +124,7 @@ Set through the environment or a `.env` file in `backend/`. `.env` is git-ignore
 | `LOG_LEVEL` | 1 | Logging verbosity, default `INFO` |
 | `DEBUG` | 1 | Debug behavior toggle, default `false` |
 | `DATABASE_URL` | 3 | PostgreSQL connection string |
-| `WORKSPACE_ROOT` | 4 | Directory holding cloned repository workspaces |
+| `WORKSPACES_ROOT` | 4 | Directory holding cloned repository workspaces |
 | `GIT_CLONE_TIMEOUT_SECONDS` | 4 | Clone timeout |
 | `MAX_REPO_SIZE_MB` | 4 | Clone size cap |
 | `GIT_ALLOWED_HOSTS` | 4 | Comma-separated clone host allow-list |

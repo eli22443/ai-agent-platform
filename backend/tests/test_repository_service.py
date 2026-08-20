@@ -36,10 +36,10 @@ def test_prepare_failure_removes_workspace(
     tmp_path: Path, fixture_repo: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setattr("socket.getaddrinfo", public_getaddrinfo)
-    workspace_root = tmp_path / "workspaces"
+    workspaces_root = tmp_path / "workspaces"
     service = RepositoryService(
         FakeGitClient(fixture_repo, fail=True),
-        workspace_root,
+        workspaces_root,
         ALLOWED_HOSTS,
         timeout=30,
         max_size_mb=200,
@@ -47,7 +47,7 @@ def test_prepare_failure_removes_workspace(
     task_id = uuid4()
     with pytest.raises(CloneError):
         service.prepare(CLONE_URL, task_id)
-    assert not (workspace_root / str(task_id)).exists()
+    assert not (workspaces_root / str(task_id)).exists()
 
 
 def test_size_cap_deletes_workspace(
@@ -55,10 +55,10 @@ def test_size_cap_deletes_workspace(
 ):
     (fixture_repo / "blob.bin").write_bytes(b"x" * (2 * 1024 * 1024))
     monkeypatch.setattr("socket.getaddrinfo", public_getaddrinfo)
-    workspace_root = tmp_path / "workspaces"
+    workspaces_root = tmp_path / "workspaces"
     service = RepositoryService(
         FakeGitClient(fixture_repo),
-        workspace_root,
+        workspaces_root,
         ALLOWED_HOSTS,
         timeout=30,
         max_size_mb=1,
@@ -66,7 +66,7 @@ def test_size_cap_deletes_workspace(
     task_id = uuid4()
     with pytest.raises(CloneError, match="size limit"):
         service.prepare(CLONE_URL, task_id)
-    assert not (workspace_root / str(task_id)).exists()
+    assert not (workspaces_root / str(task_id)).exists()
 
 
 def test_prepare_rejects_disallowed_url_without_workspace(

@@ -16,10 +16,16 @@ class Settings(BaseSettings):
     app_env: Literal["local", "test", "production"] = "local"
     log_level: str = "INFO"
     debug: bool = False
-    workspace_root: Path = Path(".workspaces")
+    workspaces_root: Path = Path(".workspaces")
     git_clone_timeout_seconds: int = 120
     max_repo_size_mb: int = 200
     git_allowed_hosts: Annotated[tuple[str, ...], NoDecode] = _DEFAULT_GIT_ALLOWED_HOSTS
+    ripgrep_path: str = "rg"
+    tool_read_max_bytes: int = 65536
+    tool_read_max_lines: int = 500
+    tool_search_max_results: int = 50
+    tool_search_timeout_seconds: int = 30
+    tool_git_timeout_seconds: int = 30
 
     @field_validator("git_allowed_hosts", mode="before")
     @classmethod

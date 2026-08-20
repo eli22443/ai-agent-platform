@@ -141,7 +141,7 @@ def _api_client(
 ) -> Iterator[TestClient]:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DATABASE_URL", TEST_DATABASE_URL)
-    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspaces"))
+    monkeypatch.setenv("WORKSPACES_ROOT", str(tmp_path / "workspaces"))
     monkeypatch.setattr("socket.getaddrinfo", public_getaddrinfo)
     get_settings.cache_clear()
 
@@ -151,7 +151,7 @@ def _api_client(
         settings = get_settings()
         return RepositoryService(
             fake_git,
-            settings.workspace_root,
+            settings.workspaces_root,
             settings.git_allowed_hosts,
             timeout=settings.git_clone_timeout_seconds,
             max_size_mb=settings.max_repo_size_mb,

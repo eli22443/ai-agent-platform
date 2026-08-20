@@ -27,13 +27,13 @@ class RepositoryService:
     def __init__(
         self,
         git_client: GitClient,
-        workspace_root: Path,
+        workspaces_root: Path,
         allowed_hosts: tuple[str, ...],
         timeout: int,
         max_size_mb: int,
     ) -> None:
         self._git_client = git_client
-        self._workspace_root = workspace_root
+        self._workspaces_root = workspaces_root
         self._allowed_hosts = allowed_hosts
         self._timeout = timeout
         self._max_size_bytes = max_size_mb * _BYTES_PER_MB
@@ -42,11 +42,11 @@ class RepositoryService:
         validate_clone_url(url, allowed_hosts=self._allowed_hosts)
 
     def workspace_path_for(self, task_id: UUID) -> Path:
-        return path_for(task_id, self._workspace_root)
+        return path_for(task_id, self._workspaces_root)
 
     def prepare(self, url: str, task_id: UUID) -> PreparedRepository:
         self.validate_url(url)
-        dest = path_for(task_id, self._workspace_root)
+        dest = path_for(task_id, self._workspaces_root)
         try:
             prepare_workspace(dest)
             self._git_client.clone(url, dest)

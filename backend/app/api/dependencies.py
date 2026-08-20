@@ -16,7 +16,7 @@ def get_repository_service() -> RepositoryService:
     )
     return RepositoryService(
         git_client,
-        settings.workspace_root,
+        settings.workspaces_root,
         settings.git_allowed_hosts,
         timeout=settings.git_clone_timeout_seconds,
         max_size_mb=settings.max_repo_size_mb,

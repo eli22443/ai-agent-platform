@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-_SKIP_DIRS = frozenset({".git", ".venv", "node_modules", "__pycache__"})
+SKIP_DIRS = frozenset({".git", ".venv", "node_modules", "__pycache__"})
 _ENTRY_POINT_NAMES = (
     "README.md",
     "pyproject.toml",
@@ -48,17 +48,21 @@ class InspectResult:
     entry_points: list[str]
 
 
+def language_for_path(path: Path) -> str | None:
+    return _LANGUAGE_BY_SUFFIX.get(path.suffix.lower())
+
+
 def inspect_workspace(root: Path) -> InspectResult:
     file_count = 0
     languages: set[str] = set()
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        dirnames[:] = [name for name in dirnames if name not in _SKIP_DIRS]
+        dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS]
         for name in filenames:
             path = Path(dirpath) / name
             if path.is_symlink() or not path.is_file():
                 continue
             file_count += 1
-            language = _LANGUAGE_BY_SUFFIX.get(path.suffix.lower())
+            language = language_for_path(path)
             if language:
                 languages.add(language)
 
