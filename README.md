@@ -9,9 +9,9 @@ Instruction: Find why the authentication tests are failing and explain how to fi
 
 ## Status
 
-Phases 1–4 are complete. `POST /tasks` persists a task, validates the repository URL against SSRF rules, shallow-clones a public HTTPS repository into an isolated workspace, and records branch and HEAD on the repository row.
+Phases 1–5 are complete. `POST /tasks` clones a repository into an isolated workspace. Phase 5 adds the read-only tool layer (`list_files`, `read_file`, `search_code`, `get_file_info`, `get_git_diff`, `get_git_history`) with path confinement and a registry for Phase 6.
 
-The next work is Phase 5 (repository context tools). See [docs/roadmap.md](docs/roadmap.md). Start the API with the commands in [Local setup](#local-setup).
+The next work is Phase 6 (OpenAI agent loop). See [docs/roadmap.md](docs/roadmap.md). Start the API with the commands in [Local setup](#local-setup).
 
 ## What it does
 
@@ -37,9 +37,9 @@ The agent investigates rather than guesses: it lists directories, searches the c
 | [docs/evaluation.md](docs/evaluation.md) | Metrics, benchmark task set, grading approach |
 | [docs/decisions.md](docs/decisions.md) | Settled decisions, open items, accepted technical debt |
 | [docs/roadmap.md](docs/roadmap.md) | All 15 phases with definitions of done |
-| [docs/phases/phase-01.md](docs/phases/phase-01.md) | The active phase specification |
+| [docs/phases/phase-05.md](docs/phases/phase-05.md) | Completed Phase 5 specification |
 
-Start with [docs/roadmap.md](docs/roadmap.md) for the plan, or [docs/architecture.md](docs/architecture.md) for the design. The completed Phase 4 specification is [docs/phases/phase-04.md](docs/phases/phase-04.md).
+Start with [docs/roadmap.md](docs/roadmap.md) for the plan, or [docs/architecture.md](docs/architecture.md) for the design. Phase 6 (agent loop) is next; see the roadmap until `docs/phases/phase-06.md` is written.
 
 ## Technology
 
@@ -128,6 +128,12 @@ Set through the environment or a `.env` file in `backend/`. `.env` is git-ignore
 | `GIT_CLONE_TIMEOUT_SECONDS` | 4 | Clone timeout |
 | `MAX_REPO_SIZE_MB` | 4 | Clone size cap |
 | `GIT_ALLOWED_HOSTS` | 4 | Comma-separated clone host allow-list |
+| `RIPGREP_PATH` | 5 | System `rg` binary name or path (not Cursor's bundled rg) |
+| `TOOL_READ_MAX_BYTES` | 5 | Max bytes returned by `read_file` |
+| `TOOL_READ_MAX_LINES` | 5 | Max lines returned by `read_file` |
+| `TOOL_SEARCH_MAX_RESULTS` | 5 | Max matches returned by `search_code` |
+| `TOOL_SEARCH_TIMEOUT_SECONDS` | 5 | ripgrep timeout |
+| `TOOL_GIT_TIMEOUT_SECONDS` | 5 | Git tool timeout |
 | `OPENAI_API_KEY` | 6 | OpenAI credential |
 | `OPENAI_MODEL` | 6 | Model used by the agent loop |
 | `AGENT_MAX_ITERATIONS` | 6 | Hard cap on agent loop turns |

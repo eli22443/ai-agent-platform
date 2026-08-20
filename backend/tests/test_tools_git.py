@@ -10,7 +10,7 @@ from app.tools.git import (
     GetGitHistoryInput,
     GetGitHistoryTool,
 )
-from tests.conftest import write_repo_fixture
+from tests.conftest import init_git_repo
 
 
 def _context(workspace: Path) -> ToolContext:
@@ -27,18 +27,8 @@ def _git(cwd: Path, *args: str) -> None:
     )
 
 
-def init_git_workspace(root: Path) -> Path:
-    workspace = write_repo_fixture(root)
-    _git(workspace, "init")
-    _git(workspace, "config", "user.email", "test@example.com")
-    _git(workspace, "config", "user.name", "Test User")
-    _git(workspace, "add", ".")
-    _git(workspace, "commit", "-m", "initial commit")
-    return workspace
-
-
 def test_get_git_history_returns_commits(tmp_path: Path) -> None:
-    workspace = init_git_workspace(tmp_path / "workspace")
+    workspace = init_git_repo(tmp_path / "workspace")
     result = GetGitHistoryTool().execute(
         _context(workspace), GetGitHistoryInput()
     )
@@ -50,7 +40,7 @@ def test_get_git_history_returns_commits(tmp_path: Path) -> None:
 
 
 def test_get_git_history_path_scoped(tmp_path: Path) -> None:
-    workspace = init_git_workspace(tmp_path / "workspace")
+    workspace = init_git_repo(tmp_path / "workspace")
     (workspace / "src" / "main.py").write_text(
         'print("UNIQUE_FIXTURE_TOKEN")\n# touched\n'
     )
@@ -77,7 +67,7 @@ def test_get_git_history_path_scoped(tmp_path: Path) -> None:
 
 
 def test_get_git_diff_returns_string(tmp_path: Path) -> None:
-    workspace = init_git_workspace(tmp_path / "workspace")
+    workspace = init_git_repo(tmp_path / "workspace")
     result = GetGitDiffTool().execute(_context(workspace), GetGitDiffInput())
 
     assert result.ok is True
@@ -94,7 +84,7 @@ def test_get_git_diff_returns_string(tmp_path: Path) -> None:
 
 
 def test_get_git_diff_path_scoped(tmp_path: Path) -> None:
-    workspace = init_git_workspace(tmp_path / "workspace")
+    workspace = init_git_repo(tmp_path / "workspace")
     (workspace / "README.md").write_text("# demo\nreadme change\n")
     (workspace / "src" / "utils.py").write_text(
         "def helper():\n    return 2\n"
@@ -110,7 +100,7 @@ def test_get_git_diff_path_scoped(tmp_path: Path) -> None:
 
 
 def test_get_git_diff_truncates(tmp_path: Path) -> None:
-    workspace = init_git_workspace(tmp_path / "workspace")
+    workspace = init_git_repo(tmp_path / "workspace")
     (workspace / "big.txt").write_text("x" * 5000)
     _git(workspace, "add", "big.txt")
     # Untracked won't show in diff; commit then modify.
@@ -127,7 +117,7 @@ def test_get_git_diff_truncates(tmp_path: Path) -> None:
 
 
 def test_get_git_history_missing_path(tmp_path: Path) -> None:
-    workspace = init_git_workspace(tmp_path / "workspace")
+    workspace = init_git_repo(tmp_path / "workspace")
     result = GetGitHistoryTool().execute(
         _context(workspace), GetGitHistoryInput(path="nope.py")
     )

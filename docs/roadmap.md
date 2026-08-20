@@ -23,8 +23,8 @@ Rules that apply to every phase:
 | 2 | Task API | None | Complete |
 | 3 | PostgreSQL via Supabase | PostgreSQL | Complete |
 | 4 | Repository management | Git CLI | Complete |
-| 5 | Repository context tools | ripgrep | Active |
-| 6 | OpenAI agent loop | OpenAI API | Not started |
+| 5 | Repository context tools | ripgrep | Complete |
+| 6 | OpenAI agent loop | OpenAI API | Active |
 | 7 | Agent runs | None | Not started |
 | 8 | Semantic retrieval | Pinecone | Not started |
 | 9 | Background execution | Redis | Not started |
@@ -121,7 +121,7 @@ Full specification: [phase-04.md](phases/phase-04.md).
 
 **Concepts.** Tool contracts and JSON Schema generation from Pydantic models, path confinement, ripgrep invocation and output parsing, output truncation strategy, structured error results.
 
-**Files.** `backend/app/tools/{base,registry,paths,filesystem,search,git}.py`, `backend/tests/test_tool_paths.py`, `backend/tests/test_tools_filesystem.py`, `backend/tests/test_tools_search.py`.
+**Files.** `backend/app/tools/{base,registry,paths,filesystem,search,git}.py`, `backend/tests/test_tool_paths.py`, `backend/tests/test_tools_filesystem.py`, `backend/tests/test_tools_search.py`, `backend/tests/test_tools_git.py`, `backend/tests/test_tools_registry.py`.
 
 **Dependencies.** None in Python; requires the `ripgrep` binary. Install with `sudo apt install ripgrep`. Cursor's bundled `rg` must not be used by application code.
 

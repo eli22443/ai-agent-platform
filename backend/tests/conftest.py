@@ -1,6 +1,7 @@
 import os
 import shutil
 import socket
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -68,6 +69,27 @@ def write_repo_fixture(root: Path) -> Path:
     (src / "main.py").write_text('print("UNIQUE_FIXTURE_TOKEN")\n')
     (src / "utils.py").write_text("def helper():\n    return 1\n")
     return root
+
+
+def init_git_repo(root: Path) -> Path:
+    """Write the standard fixture tree and create an initial git commit."""
+    workspace = write_repo_fixture(root)
+
+    def _git(*args: str) -> None:
+        subprocess.run(
+            ["git", *args],
+            check=True,
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+        )
+
+    _git("init")
+    _git("config", "user.email", "test@example.com")
+    _git("config", "user.name", "Test User")
+    _git("add", ".")
+    _git("commit", "-m", "initial commit")
+    return workspace
 
 
 def _truncate(engine: Engine) -> None:

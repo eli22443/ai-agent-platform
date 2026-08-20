@@ -104,11 +104,18 @@ def test_task_service_does_not_import_subprocess():
     assert "subprocess" not in inspect.getsource(task_service_module)
 
 
-def test_subprocess_is_confined_to_git_client():
+def test_subprocess_is_confined_to_allowed_modules():
+    """Clone uses repositories/git_client; tools may use git.py and search.py only."""
     app_root = Path(__file__).resolve().parents[1] / "app"
+    allowed = {
+        "repositories/git_client.py",
+        "tools/git.py",
+        "tools/search.py",
+    }
     offenders = [
         path
         for path in app_root.rglob("*.py")
-        if path.name != "git_client.py" and "subprocess" in path.read_text()
+        if "subprocess" in path.read_text()
+        and path.relative_to(app_root).as_posix() not in allowed
     ]
     assert offenders == []
