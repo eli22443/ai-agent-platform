@@ -15,7 +15,7 @@ This document describes the target architecture. Every component is annotated wi
 
 ## Status
 
-Documentation only. Phase 1 has not started. No application code exists in this repository yet.
+Phases 1–5 are implemented in `backend/`. Phase 6 (OpenAI agent loop, `POST /tasks/{task_id}/run`) is the active specification — see [phases/phase-06.md](phases/phase-06.md). Components marked Phase 7+ do not exist yet unless noted.
 
 ## Target architecture
 
@@ -70,14 +70,18 @@ The application layer and the only public entry point. Owns routing, request and
 Endpoints as they accumulate:
 
 ```text
-GET  /health              Phase 1
-POST /tasks               Phase 2
-GET  /tasks/{task_id}     Phase 9 (status polling for asynchronous runs)
+GET  /health                 Phase 1
+POST /tasks                  Phase 2 (clone + persist; returns pending)
+GET  /tasks                  Phase 2
+GET  /tasks/{task_id}        Phase 2 (includes result/error after a run — Phase 6)
+POST /tasks/{task_id}/run    Phase 6 (sync agent; D22)
 ```
+
+After Phase 9, long-running work moves to a worker; clients may still poll `GET /tasks/{task_id}` (or a 202 enqueue path) rather than holding `/run` open.
 
 ### Persistence (Phase 3)
 
-PostgreSQL, provisioned as a managed Supabase database. Supabase is used as PostgreSQL and, optionally and much later, as an authentication provider. It is not the application backend; all business logic stays in FastAPI. Access is through SQLAlchemy 2.x with Alembic migrations. Database logic lives in a repository/service module, not in route handlers.
+PostgreSQL via SQLAlchemy 2.x and Alembic. Development uses a local apt-installed Postgres (D19). Managed Supabase remains the intended production database (D6); Supabase Auth is optional and deferred to Phase 12. Business logic stays in FastAPI. ORM models live under `app/database/`; the package name `app/repositories/` is reserved for Git/workspace code (Phase 4), not a data-access “repository” pattern.
 
 ### Repository service (Phase 4)
 
@@ -89,7 +93,7 @@ Each tool has a name, a description used by the model, a JSON Schema for its inp
 
 ### Agent loop (Phase 6)
 
-Implemented directly against the OpenAI Responses API with native tool calling, deliberately framework-light. The loop sends the instruction and tool schemas, detects tool calls, dispatches them, feeds results back, and repeats until the model produces a final answer or a safeguard limit is reached.
+Implemented directly against the OpenAI Responses API with native tool calling, deliberately framework-light. Triggered by `POST /tasks/{task_id}/run` after a successful clone (D22) — not inline on `POST /tasks`. The loop sends the instruction and tool schemas from `build_read_only_registry()`, detects tool calls, dispatches them, feeds results back, and repeats until the model produces a final answer or a safeguard limit is reached. Phase 6 persists the answer on `tasks.result`; full `agent_runs` / `tool_calls` rows arrive in Phase 7.
 
 ### Retrieval (Phase 5 and Phase 8)
 
@@ -97,7 +101,7 @@ Two complementary tracks, not competing ones. Lexical search with ripgrep arrive
 
 ### Background execution (Phase 9)
 
-Redis with ARQ. `POST /tasks` persists the task, enqueues a job, and returns a task identifier immediately rather than holding an HTTP connection open for the duration of an agent run. A worker process executes the agent and updates task status and results.
+Redis with ARQ. Long-running clone and/or agent work leaves the HTTP request. Exact enqueue shape (from create, from `/run`, or both) is decided in Phase 9; D22's separate-run resource can become an enqueue trigger. Clients poll `GET /tasks/{task_id}` for status and results.
 
 ### Sandbox (Phase 10)
 
@@ -109,41 +113,42 @@ Langfuse for LLM and agent tracing, OpenTelemetry for application-level traces a
 
 ## Request-to-result data flow
 
-The flow below is the state after Phase 9, when execution is asynchronous. Before that, the agent runs inline within the request.
+### Phase 6 MVP (current target)
+
+Clone and agent are separate HTTP calls. Both are synchronous on the request (debt repaid in Phase 9).
 
 ```mermaid
 sequenceDiagram
     participant User
     participant API as FastAPI
     participant DB as PostgreSQL
-    participant Q as Redis/ARQ
-    participant W as Worker
     participant R as Repository Service
     participant A as Agent Loop
     participant M as OpenAI Responses API
 
     User->>API: POST /tasks {repository_url, instruction}
+    API->>R: validate URL, clone workspace
     API->>DB: insert task (status=pending)
-    API->>Q: enqueue job(task_id)
-    API-->>User: 202 {task_id, status=pending}
-    Q->>W: dispatch job
-    W->>DB: update task (status=running)
-    W->>R: prepare workspace
-    R->>R: validate URL, clone repository
-    W->>A: run(instruction, workspace)
+    API-->>User: 201 {task_id, status=pending}
+    User->>API: POST /tasks/{task_id}/run
+    API->>DB: status=running
+    API->>A: run(instruction, workspace)
     loop until final answer or limit
         A->>M: input + tool schemas
         M-->>A: tool call
-        A->>A: execute tool, record tool_call
+        A->>A: ToolRegistry.execute
         A->>M: tool result
     end
     M-->>A: final answer
-    A->>DB: persist agent_run and tool_calls
-    W->>DB: update task (status=completed, result)
+    API->>DB: status=completed, result
+    API-->>User: 200 answer + tool_calls summary
     User->>API: GET /tasks/{task_id}
-    API->>DB: read task
     API-->>User: status and result
 ```
+
+### Phase 9+ (async)
+
+When Redis/ARQ lands, enqueue replaces holding `/run` (or clone) open; workers prepare the workspace and run the agent; clients poll `GET /tasks/{task_id}`. Full `agent_runs` / `tool_calls` persistence is Phase 7.
 
 ## Data model sketch
 
@@ -209,50 +214,38 @@ Notes:
 
 ## Repository layout
 
-Current layout:
+Current layout (Phases 1–5 landed; Phase 6 not implemented yet):
 
 ```text
 ai-agent-platform/
 ├── .gitignore
 ├── README.md
-└── docs/
-    ├── architecture.md
-    ├── agent-design.md
-    ├── security.md
-    ├── evaluation.md
-    ├── decisions.md
-    ├── roadmap.md
-    └── phases/
-        └── phase-01.md
-```
-
-Target layout, reached incrementally. Directories appear only in the phase that needs them:
-
-```text
-ai-agent-platform/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                 Phase 1
-│   │   ├── config.py               Phase 1
-│   │   ├── logging.py              Phase 1
-│   │   ├── errors.py               Phase 1
-│   │   ├── api/routes/             Phase 1-2
-│   │   ├── schemas/                Phase 2
-│   │   ├── services/               Phase 2
-│   │   ├── database/               Phase 3
-│   │   ├── repositories/           Phase 4
-│   │   ├── tools/                  Phase 5
-│   │   ├── agent/                  Phase 6
-│   │   ├── retrieval/              Phase 8
-│   │   ├── workers/                Phase 9
-│   │   ├── sandbox/                Phase 10
-│   │   └── observability/          Phase 13
-│   ├── tests/                      Phase 1
-│   ├── pyproject.toml              Phase 1
-│   └── uv.lock                     Phase 1
-├── infrastructure/                 Phase 14
-├── .github/workflows/              Phase 14
+│   │   ├── main.py, config.py, logging.py, errors.py, middleware.py
+│   │   ├── api/routes/{health,tasks}.py
+│   │   ├── schemas/, services/
+│   │   ├── database/               # SQLAlchemy + Alembic
+│   │   ├── repositories/           # Git clone, SSRF, workspace
+│   │   └── tools/                  # read-only tool registry
+│   ├── tests/
+│   ├── pyproject.toml
+│   └── uv.lock
 └── docs/
+    ├── architecture.md, agent-design.md, security.md, …
+    ├── roadmap.md, decisions.md
+    └── phases/phase-01.md … phase-06.md
+```
+
+Target additions by later phase (do not create placeholders early):
+
+```text
+backend/app/llm/, agent/            Phase 6
+backend/app/retrieval/              Phase 8
+backend/app/workers/                Phase 9
+backend/app/sandbox/                Phase 10
+backend/app/observability/          Phase 13
+infrastructure/, .github/workflows/ Phase 14
 ```
 
 ## Binding technology constraints
@@ -267,7 +260,7 @@ These are project constraints. They are not defaults to be revisited casually. C
 | LLM interface | OpenAI Responses API via the official SDK | No LangChain or LangGraph in the initial implementation |
 | Embeddings | OpenAI `text-embedding-3-small` | Not before Phase 8 |
 | Vector store | Pinecone | Not before Phase 8; complements ripgrep rather than replacing it |
-| Database | PostgreSQL via Supabase, SQLAlchemy 2.x, Alembic | Not before Phase 3 |
+| Database | PostgreSQL (local apt for development; Supabase for production), SQLAlchemy 2.x, Alembic | From Phase 3 |
 | Queue | Redis with ARQ | Not before Phase 9; not Celery |
 | Sandbox | Docker | Not before Phase 10; no unrestricted host shell execution ever |
 | Auth | Supabase Auth with JWT, optional | Not before Phase 12; no custom password authentication |

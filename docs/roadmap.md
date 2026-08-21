@@ -4,7 +4,7 @@
 
 Fifteen phases, executed in order. Each phase produces working software, has its own tests, and ends in a single commit. A phase introduces only the components it needs; nothing is stubbed in advance because it appears in the target architecture.
 
-This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 5](phases/phase-05.md). Later phases get a `phase-NN.md` when they become active.
+This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 6](phases/phase-06.md). Later phases get a `phase-NN.md` when they become active.
 
 Rules that apply to every phase:
 
@@ -85,7 +85,7 @@ Full specification: [phase-02.md](phases/phase-02.md).
 
 **Concepts.** SQLAlchemy 2.x declarative models and typed mappings, async sessions and session lifecycle, Alembic migrations, connection pooling, transaction boundaries, keeping database access out of route handlers.
 
-**Files.** `backend/app/database/{session,models,base}.py`, `backend/app/database/migrations/`, `backend/alembic.ini`, `backend/app/repositories/task_repository.py`, updated `task_service.py`, `backend/tests/test_task_persistence.py`.
+**Files.** `backend/app/database/{session,models,base}.py`, `backend/app/database/migrations/`, `backend/alembic.ini`, updated `task_service.py`, `backend/tests/test_task_persistence.py`. Do not add `app/repositories/task_repository.py` (that package name is reserved for Phase 4 Git).
 
 **Dependencies.** `uv add sqlalchemy alembic "psycopg[binary]"`.
 
@@ -139,13 +139,25 @@ Full specification: [phase-05.md](phases/phase-05.md).
 
 **Concepts.** The OpenAI Responses API, native function calling, conversation state management, tool dispatch, loop termination, iteration and token budgets, prompt design, mocking model responses in tests.
 
-**Files.** `backend/app/llm/client.py`, `backend/app/agent/{loop,prompts,limits,dispatch}.py`, updated `task_service.py`, `backend/tests/test_agent_loop.py`, `backend/tests/test_agent_limits.py`.
+**Files.** `backend/app/llm/client.py`, `backend/app/agent/{loop,prompts,limits,dispatch,types}.py`, updated `task_service.py` / task schemas / routes, `backend/tests/test_agent_loop.py`, `backend/tests/test_agent_limits.py`, `backend/tests/test_tasks_run_api.py`.
 
 **Dependencies.** `uv add openai`.
+
+**Interface.**
+
+```text
+POST /tasks                 → clone only, status pending
+POST /tasks/{task_id}/run   → run agent, return answer + tool_calls summary
+GET  /tasks/{task_id}       → includes result/error after a run
+```
+
+**Notes.** Agent is not inline on create (D22). Sync `/run` is debt repaid in Phase 9. Persist answer on `tasks.result`; full `agent_runs` / `tool_calls` tables wait for Phase 7.
 
 **Definition of done.** The loop sends tool schemas, detects tool calls, executes them, feeds results back, and terminates on a final answer; iteration, wall-clock, and token limits are enforced and configurable, and a limit halt is reported distinctly from completion; a tool failure becomes an observation rather than crashing the run; the answer and the tool-call summary are returned through the API; unit tests mock the model entirely and no test makes a paid API call; one manual end-to-end run against a real public repository is documented.
 
 **Commit.** `feat: implement agent loop on the OpenAI Responses API`
+
+Full specification: [phase-06.md](phases/phase-06.md).
 
 ## Phase 7 — Agent runs
 

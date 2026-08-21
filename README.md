@@ -9,17 +9,18 @@ Instruction: Find why the authentication tests are failing and explain how to fi
 
 ## Status
 
-Phases 1–5 are complete. `POST /tasks` clones a repository into an isolated workspace. Phase 5 adds the read-only tool layer (`list_files`, `read_file`, `search_code`, `get_file_info`, `get_git_diff`, `get_git_history`) with path confinement and a registry for Phase 6.
+Phases 1–5 are complete in code. Phase 6 (OpenAI agent loop) is the active specification: [docs/phases/phase-06.md](docs/phases/phase-06.md).
 
-The next work is Phase 6 (OpenAI agent loop). See [docs/roadmap.md](docs/roadmap.md). Start the API with the commands in [Local setup](#local-setup).
+`POST /tasks` clones into an isolated workspace. Phase 5 provides the read-only tool registry. Phase 6 adds `POST /tasks/{task_id}/run` to investigate the clone with the Responses API and return an engineering answer.
 
 ## What it does
 
 ```mermaid
 flowchart LR
     Post["POST /tasks"] --> Persist["Persist task"]
-    Persist --> Clone["Clone repository into isolated workspace"]
-    Clone --> Loop["Agent loop"]
+    Persist --> Clone["Clone into workspace"]
+    Clone --> Pending["status pending"]
+    Run["POST /tasks/id/run"] --> Loop["Agent loop"]
     Loop --> Tools["list_files / search_code / read_file"]
     Tools --> Loop
     Loop --> Answer["Engineering answer"]
@@ -37,9 +38,9 @@ The agent investigates rather than guesses: it lists directories, searches the c
 | [docs/evaluation.md](docs/evaluation.md) | Metrics, benchmark task set, grading approach |
 | [docs/decisions.md](docs/decisions.md) | Settled decisions, open items, accepted technical debt |
 | [docs/roadmap.md](docs/roadmap.md) | All 15 phases with definitions of done |
-| [docs/phases/phase-05.md](docs/phases/phase-05.md) | Completed Phase 5 specification |
+| [docs/phases/phase-06.md](docs/phases/phase-06.md) | Active Phase 6 specification (MVP agent loop) |
 
-Start with [docs/roadmap.md](docs/roadmap.md) for the plan, or [docs/architecture.md](docs/architecture.md) for the design. Phase 6 (agent loop) is next; see the roadmap until `docs/phases/phase-06.md` is written.
+Start with [docs/roadmap.md](docs/roadmap.md) or [docs/phases/phase-06.md](docs/phases/phase-06.md) for the next implementation step.
 
 ## Technology
 
@@ -84,7 +85,7 @@ No frontend framework at any phase. Swagger UI at `/docs` is the demonstration s
 | [`uv`](https://docs.astral.sh/uv/) | Phase 1 | Dependency and environment management |
 | `git` | Phase 1 | Also the repository cloning mechanism from Phase 4 |
 | `ripgrep` | Phase 5 | `sudo apt install ripgrep`; an editor-bundled `rg` is not sufficient |
-| PostgreSQL connection | Phase 3 | A Supabase project, or another PostgreSQL instance |
+| PostgreSQL connection | Phase 3 | Local apt Postgres for development (D19); Supabase is the production target (D6) |
 | OpenAI API key | Phase 6 | |
 | Pinecone account | Phase 8 | |
 | Redis | Phase 9 | |
@@ -138,6 +139,8 @@ Set through the environment or a `.env` file in `backend/`. `.env` is git-ignore
 | `OPENAI_MODEL` | 6 | Model used by the agent loop |
 | `AGENT_MAX_ITERATIONS` | 6 | Hard cap on agent loop turns |
 | `AGENT_TIMEOUT_SECONDS` | 6 | Wall-clock limit per run |
+| `AGENT_MAX_OUTPUT_TOKENS` | 6 | Optional per-response output cap |
+| `AGENT_TOKEN_BUDGET` | 6 | Optional cumulative token halt (`0` = disabled) |
 | `OPENAI_EMBEDDING_MODEL` | 8 | Embedding model, default `text-embedding-3-small` |
 | `PINECONE_API_KEY` | 8 | Pinecone credential |
 | `PINECONE_INDEX` | 8 | Pinecone index name |

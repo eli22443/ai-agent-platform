@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines how the agent works: the tool-calling loop, the tool contract, the catalog of tools and when each arrives, and the safeguards that keep a run bounded. It is a design document written ahead of implementation. The agent loop arrives in Phase 6; the tools it depends on arrive in Phase 5.
+This document defines how the agent works: the tool-calling loop, the tool contract, the catalog of tools and when each arrives, and the safeguards that keep a run bounded. The tools landed in Phase 5. The agent loop is specified in [phases/phase-06.md](phases/phase-06.md) and is triggered by `POST /tasks/{task_id}/run` after clone (D22), not inline on `POST /tasks`.
 
 ## Design stance
 
@@ -37,7 +37,7 @@ Step by step:
 5. Validate each tool call's arguments against the tool's schema, then dispatch it. Multiple tool calls in one response are executed before returning to the model.
 6. Append each tool's result to the conversation input, keyed to the originating call.
 7. Repeat from step 2.
-8. Persist the run and its tool calls regardless of how the loop terminated.
+8. Return the answer and an in-memory tool-call summary; persist the answer on `tasks.result` (Phase 6). Full `agent_runs` / `tool_calls` rows are Phase 7.
 
 ## Responses API mechanics
 
@@ -137,9 +137,9 @@ When a limit is reached, the run does not fail silently and does not pretend to 
 
 ## Agent run record
 
-Each run is persisted so that behavior is inspectable after the fact. This is the foundation that Phase 13 observability builds on, and it is why Phase 7 exists as a distinct phase.
+Phase 6 returns a light tool-call summary on `POST /tasks/{task_id}/run` and stores the final answer on `tasks.result`. Phase 7 persists full `agent_runs` and `tool_calls` so behavior is inspectable after the fact — the foundation Phase 13 observability builds on.
 
-Recorded per run: task reference, model, status, iteration count, token usage where available, start and finish timestamps, final result, and error information. Recorded per tool call: tool name, arguments, status, duration, and error. See the data model in [architecture.md](architecture.md).
+Recorded per run (Phase 7): task reference, model, status, iteration count, token usage where available, start and finish timestamps, final result, and error information. Recorded per tool call: tool name, arguments, status, duration, and error. See the data model in [architecture.md](architecture.md).
 
 ## What is exposed to the user
 
@@ -157,6 +157,6 @@ The most important instruction concerns untrusted content. Repository files may 
 
 ## Evolution path
 
-Phase 6 delivers a single agent with read-only tools that answers questions about a repository. Phase 11 extends it to modification, where the loop gains a natural inner cycle: investigate, modify, run tests, inspect failures, repair, and finish by returning a reviewable diff. Changes are never pushed to the user's repository automatically.
+Phase 6 delivers a single agent with read-only tools that answers questions about a repository via `POST /tasks/{task_id}/run`. Phase 11 extends it to modification, where the loop gains a natural inner cycle: investigate, modify, run tests, inspect failures, repair, and finish by returning a reviewable diff. Changes are never pushed to the user's repository automatically.
 
 Multi-agent orchestration, planner/executor separation, and persistent cross-run memory are explicitly out of scope until the single-agent loop is measurably insufficient.

@@ -168,6 +168,18 @@ Rationale: Phase 5 tests and runtime need a stable binary on PATH in WSL and in 
 
 Rejected: vendoring a ripgrep binary in the repo (heavier maintenance); pure-Python search (slower, wrong learning goal for this phase).
 
+### D22 — Agent runs via `POST /tasks/{task_id}/run`
+
+Creating a task (`POST /tasks`) only validates, clones, and stores a `pending` task. The agent executes on a separate `POST /tasks/{task_id}/run`, which runs the OpenAI Responses loop synchronously and returns the answer.
+
+Decided at the start of Phase 6.
+
+Rationale: keeps clone failures distinct from agent failures; makes the MVP flow explicit (create, then run); avoids making every task creation pay for an LLM call. Inline agent-on-create was rejected as harder to reason about and harder to evolve toward Phase 9 background jobs.
+
+Consequence: Phase 6 `/run` holds the HTTP request for the whole agent loop (same class of debt as sync clone). Phase 9 moves execution to a worker; the separate-run resource can become enqueue or stay as an explicit trigger.
+
+Idempotency in Phase 6: a second `/run` on `completed`, `failed`, or `running` returns 409. Re-run semantics wait for a later phase if needed.
+
 ## Open items
 
 These must be resolved explicitly, not by assumption during implementation.
@@ -231,7 +243,7 @@ Decide by: implementation of Phase 8.
 | In-memory task store | Phase 2 | State lost on restart; single-process only | Phase 3 (implementation landed) |
 | Validation errors omit the offending field | Phase 2 | A 422 says only "Request validation failed."; a client cannot tell which field was wrong or why | Deferred; revisit at Phase 15, or sooner if it slows development |
 | Synchronous clone on `POST /tasks` | Phase 4 | HTTP request stays open for `git clone`; timeouts feel like API failures | Phase 9 |
-| Synchronous agent execution in the request | Phase 6 | Long-held HTTP connections, no progress visibility | Phase 9 |
+| Synchronous agent execution on `POST /tasks/{id}/run` | Phase 6 | Long-held HTTP connections, no progress visibility; pairs with sync clone debt | Phase 9 |
 | No authentication | Phase 1 | Anyone with network access can invoke the API | Phase 12, or on public exposure |
 | Public repositories only | Phase 4 | Cannot handle private repositories | Phase 12 |
 | Single evaluation fixture | Phase 6 | Benchmark may overfit to one repository's structure | See O6 |
