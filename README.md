@@ -49,7 +49,7 @@ Start with [docs/roadmap.md](docs/roadmap.md) or [docs/phases/phase-06.md](docs/
 | Language | Python 3.12+ | 1 |
 | Dependencies | `uv`, `pyproject.toml`, `uv.lock` | 1 |
 | API | FastAPI, Pydantic v2, Uvicorn | 1 |
-| Database | PostgreSQL via Supabase, SQLAlchemy 2.x, Alembic | 3 |
+| Database | PostgreSQL (local apt for dev; Supabase for prod), SQLAlchemy 2.x, Alembic | 3 |
 | Repository access | Git CLI | 4 |
 | Code search | ripgrep | 5 |
 | LLM | OpenAI Responses API, official SDK | 6 |

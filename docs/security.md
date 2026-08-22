@@ -31,7 +31,7 @@ Introduced: Phase 10.
 
 The repository URL is user-supplied and is handed to a network client. Without validation it can be pointed at cloud instance metadata endpoints, internal services, or local addresses.
 
-Controls: accept only `https://` and, if needed, `git://` from an allow-list of known hosts; reject `file://`, `ssh://`, and scp-style syntax; resolve the hostname and reject private, loopback, link-local, and unique-local address ranges, including the cloud metadata address; re-check after DNS resolution to reduce rebinding exposure; disable redirect following to unvalidated hosts; and apply a clone timeout and size cap. Validation lives in the repository service so there is exactly one entry point to audit.
+Controls: accept only `https://` from an allow-list of known hosts (D20); reject `git://`, `file://`, `ssh://`, and scp-style syntax; resolve the hostname and reject private, loopback, link-local, and unique-local address ranges, including the cloud metadata address; re-check after DNS resolution to reduce rebinding exposure; disable redirect following to unvalidated hosts; and apply a clone timeout and size cap. Validation lives in the repository service so there is exactly one entry point to audit.
 
 Introduced: Phase 4, hardened in Phase 15.
 

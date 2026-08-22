@@ -83,7 +83,7 @@ Full specification: [phase-02.md](phases/phase-02.md).
 
 **Objective.** Replace the placeholder store with real persistence.
 
-**Concepts.** SQLAlchemy 2.x declarative models and typed mappings, async sessions and session lifecycle, Alembic migrations, connection pooling, transaction boundaries, keeping database access out of route handlers.
+**Concepts.** SQLAlchemy 2.x declarative models and typed mappings, sync request-scoped sessions and session lifecycle (D19), Alembic migrations, connection pooling, transaction boundaries, keeping database access out of route handlers.
 
 **Files.** `backend/app/database/{session,models,base}.py`, `backend/app/database/migrations/`, `backend/alembic.ini`, updated `task_service.py`, `backend/tests/test_task_persistence.py`. Do not add `app/repositories/task_repository.py` (that package name is reserved for Phase 4 Git).
 
@@ -165,7 +165,7 @@ Full specification: [phase-06.md](phases/phase-06.md).
 
 **Concepts.** Execution auditing, schema design for semi-structured data, token accounting, foreign key relationships and cascade behavior, querying run history.
 
-**Files.** `backend/app/database/models.py` extended with `agent_runs` and `tool_calls`, a migration, `backend/app/repositories/run_repository.py`, an optional `GET /tasks/{task_id}/runs`, `backend/tests/test_run_recording.py`.
+**Files.** `backend/app/database/models.py` extended with `agent_runs` and `tool_calls`, a migration, `backend/app/services/agent_run_service.py`, an optional `GET /tasks/{task_id}/runs`, `backend/tests/test_run_recording.py`.
 
 **Dependencies.** None.
 

@@ -6,6 +6,8 @@ A record of what was decided, why, and what was rejected. Its job is to stop set
 
 Three sections: settled decisions, open items that must not be resolved by assumption, and accepted technical debt.
 
+**Scope.** Decisions D1–D22 cover Phases 1–6. Phases 1–5 are implemented in `backend/`. Phase 6 is specified in [phases/phase-06.md](phases/phase-06.md) but not yet implemented; D22 governs the `/run` endpoint when that phase lands.
+
 ## Settled decisions
 
 ### D1 — `uv` for dependency management
@@ -60,6 +62,8 @@ Rejected: raw SQL, which loses type checking and migration tooling; SQLModel, wh
 
 ### D8 — ARQ with Redis for background jobs
 
+ARQ with Redis for durable background work (clone and agent runs), from Phase 9.
+
 Rejected: Celery, heavier than needed and awkward with async code; RQ, which is synchronous; FastAPI `BackgroundTasks`, which runs in the API process and provides no durability, no retries, and no visibility, making it unsuitable for multi-minute agent runs.
 
 ### D9 — Docker for sandboxed execution
@@ -110,15 +114,17 @@ Rejected: an earlier draft that placed the database at Phase 8, which would have
 
 ### D16 — Strict layer separation
 
-The six layers in [architecture.md](architecture.md) communicate through explicit interfaces. Routes do not call Git or construct prompts. The agent loop does not call `subprocess` or open files. Tools do not call the model.
+The seven layers in [architecture.md](architecture.md) communicate through explicit interfaces. Routes do not call Git or construct prompts. The agent loop does not call `subprocess` or open files. Tools do not call the model.
 
 This is what makes the sandbox and persistence layers replaceable later without touching agent logic, and it is the rule most likely to be eroded under time pressure.
 
 ### D17 — Documentation before implementation
 
-The architecture, agent design, threat model, evaluation approach, and roadmap were written before any code, and the initial commit contains documentation only.
+The architecture, agent design, threat model, evaluation approach, and roadmap were written before Phase 1 code. Each phase gets a detailed specification in `docs/phases/phase-NN.md` just before implementation, not all at once upfront.
 
 Rationale: the security posture and phase boundaries are the parts most expensive to retrofit. The cost is that some documented details will be wrong, which is why every document states its status and is expected to be revised as phases land.
+
+Consequence: Phases 1–5 landed against this documentation. Phase 6 is the active spec; later phases remain outlined in [roadmap.md](roadmap.md) until they become active.
 
 ### D18 — Unversioned API paths
 
@@ -144,7 +150,7 @@ Rejected: hosted Supabase as the Phase 3 development target; Docker Compose Post
 
 D6 is unchanged: managed/production PostgreSQL remains Supabase. This decision is the development database only. SQLAlchemy stays sync to match the existing FastAPI routes; async sessions are not introduced here.
 
-This is how the Phase 2 in-memory task store is replaced. The debt row is repaid when the Phase 3 implementation lands, not when this decision is recorded.
+Consequence: replaced the Phase 2 in-memory task store when Phase 3 landed (see accepted technical debt table).
 
 ### D20 — HTTPS allow-list and post-DNS SSRF checks for clone URLs
 
@@ -179,6 +185,8 @@ Rationale: keeps clone failures distinct from agent failures; makes the MVP flow
 Consequence: Phase 6 `/run` holds the HTTP request for the whole agent loop (same class of debt as sync clone). Phase 9 moves execution to a worker; the separate-run resource can become enqueue or stay as an explicit trigger.
 
 Idempotency in Phase 6: a second `/run` on `completed`, `failed`, or `running` returns 409. Re-run semantics wait for a later phase if needed.
+
+Phase 6 implementation details locked in [phases/phase-06.md](phases/phase-06.md): explicit Responses API input list (not `previous_response_id` alone), read-only tool registry only, persist answer on `tasks.result` without Phase 7 `agent_runs` rows, and return an in-memory tool-call summary in the run response.
 
 ## Open items
 
@@ -243,10 +251,10 @@ Decide by: implementation of Phase 8.
 | In-memory task store | Phase 2 | State lost on restart; single-process only | Phase 3 (implementation landed) |
 | Validation errors omit the offending field | Phase 2 | A 422 says only "Request validation failed."; a client cannot tell which field was wrong or why | Deferred; revisit at Phase 15, or sooner if it slows development |
 | Synchronous clone on `POST /tasks` | Phase 4 | HTTP request stays open for `git clone`; timeouts feel like API failures | Phase 9 |
-| Synchronous agent execution on `POST /tasks/{id}/run` | Phase 6 | Long-held HTTP connections, no progress visibility; pairs with sync clone debt | Phase 9 |
+| Synchronous agent execution on `POST /tasks/{id}/run` | Phase 6 (not yet landed) | Long-held HTTP connections, no progress visibility; pairs with sync clone debt | Phase 9 |
 | No authentication | Phase 1 | Anyone with network access can invoke the API | Phase 12, or on public exposure |
 | Public repositories only | Phase 4 | Cannot handle private repositories | Phase 12 |
-| Single evaluation fixture | Phase 6 | Benchmark may overfit to one repository's structure | See O6 |
+| Single evaluation fixture | Phase 6 (when eval runs begin) | Benchmark may overfit to one repository's structure | See O6 |
 | `.context/` excluded from version control | Phase 1 | Reference PDFs and the fixture archive are not tracked | Not planned; they are large binaries, not source |
 
 Recording debt is only useful if it is read. Each item above names the phase that repays it, and a phase is not complete while it silently leaves new debt unrecorded here.

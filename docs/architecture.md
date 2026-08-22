@@ -42,7 +42,7 @@ flowchart TD
 
 ## Layer separation
 
-The system is divided into six layers. A layer may depend on the layers below it through an explicit interface, and never reaches sideways into a peer's internals. This is the single most important structural rule in the project, because it is what allows the sandbox and persistence layers to be replaced without touching agent logic.
+The system is divided into seven layers. A layer may depend on the layers below it through an explicit interface, and never reaches sideways into a peer's internals. This is the single most important structural rule in the project, because it is what allows the sandbox and persistence layers to be replaced without touching agent logic.
 
 | Layer | Responsibility | Introduced |
 | --- | --- | --- |
@@ -71,7 +71,7 @@ Endpoints as they accumulate:
 
 ```text
 GET  /health                 Phase 1
-POST /tasks                  Phase 2 (clone + persist; returns pending)
+POST /tasks                  Phase 2 persist; Phase 4 adds clone (returns pending)
 GET  /tasks                  Phase 2
 GET  /tasks/{task_id}        Phase 2 (includes result/error after a run — Phase 6)
 POST /tasks/{task_id}/run    Phase 6 (sync agent; D22)

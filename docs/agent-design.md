@@ -24,7 +24,7 @@ flowchart TD
     Dispatch --> Record["Record tool_call: name, args, duration, status"]
     Record --> Feed["Append tool results to input"]
     Feed --> Call
-    Final --> Persist["Persist agent_run and tool_calls"]
+    Final --> Persist["Persist answer on tasks.result (Phase 6); full agent_runs rows in Phase 7"]
     Halt --> Persist
 ```
 
