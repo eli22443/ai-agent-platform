@@ -15,6 +15,7 @@ from app.services.task_service import Task, TaskService
 from app.agent.types import AgentResult
 from app.llm.client import OpenAILLMClient
 from app.tools.registry import ToolRegistry
+from app.services.errors import TaskNotFound, TaskNotRunnable
 
 router = APIRouter(tags=["tasks"])
 
@@ -39,7 +40,12 @@ def run_task(
     llm: OpenAILLMClient = Depends(get_llm_client),
     registry: ToolRegistry = Depends(get_tool_registry),
 ) -> TaskRunResponse:
-    agent_result = service.run(task_id, llm, registry)
+    try:
+        agent_result = service.run(task_id, llm, registry)
+    except TaskNotFound:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    except TaskNotRunnable as exc:
+        raise HTTPException(status_code=409, detail=exc.message)
 
     return _to_task_run_response(task_id, agent_result)
 
@@ -69,13 +75,19 @@ def _to_task_response(task: Task) -> TaskResponse:
         repository_url=task.repository_url,
         instruction=task.instruction,
         created_at=task.created_at,
+        result=task.result,
+        error=task.error,
     )
 
 
 def _to_task_run_response(task_id: UUID, agent_result: AgentResult) -> TaskRunResponse:
+    if agent_result.error:
+        status = TaskStatus.FAILED
+    else:
+        status = TaskStatus.COMPLETED
     return TaskRunResponse(
         task_id=task_id,
-        status=TaskStatus.COMPLETED if agent_result.completed else TaskStatus.FAILED,
+        status=status,
         answer=agent_result.answer,
         halt_reason=agent_result.halt_reason,
         iterations=agent_result.iterations,

@@ -3,23 +3,29 @@ from enum import Enum
 from uuid import UUID
 from pydantic import BaseModel, Field, HttpUrl
 
+
 class TaskStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
 
+
 class TaskCreateRequest(BaseModel):
     repository_url: HttpUrl
     instruction: str = Field(min_length=10, max_length=2000)
-    
+
+
 class TaskResponse(BaseModel):
     task_id: UUID
     status: TaskStatus
     repository_url: str
     instruction: str
-    created_at: datetime    
-    
+    created_at: datetime
+    result: str | None = None
+    error: str | None = None
+
+
 class TaskRunResponse(BaseModel):
     task_id: UUID
     status: TaskStatus

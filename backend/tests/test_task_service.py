@@ -119,3 +119,140 @@ def test_subprocess_is_confined_to_allowed_modules():
         and path.relative_to(app_root).as_posix() not in allowed
     ]
     assert offenders == []
+
+
+def test_run_unknown_task_raises_not_found(task_service: TaskService):
+    from app.services.errors import TaskNotFound
+    from tests.test_agent_loop import FakeLLMClient, _text_response
+    from app.tools.registry import build_read_only_registry
+
+    with pytest.raises(TaskNotFound):
+        task_service.run(
+            UUID("00000000-0000-0000-0000-000000000000"),
+            FakeLLMClient([_text_response("x")]),
+            build_read_only_registry(),
+        )
+
+
+def test_run_success_persists_completed_result(
+    db_session: Session, task_service: TaskService
+):
+    from tests.test_agent_loop import FakeLLMClient, _text_response
+    from app.tools.registry import build_read_only_registry
+
+    task = task_service.create(REQUESTS_URL, INSTRUCTION)
+    llm = FakeLLMClient([_text_response("Session handles cookies.")])
+
+    result = task_service.run(task.id, llm, build_read_only_registry())
+
+    assert result.completed is True
+    assert result.answer == "Session handles cookies."
+    record = db_session.get(TaskRecord, task.id)
+    assert record is not None
+    assert record.status == TaskStatus.COMPLETED.value
+    assert record.result == "Session handles cookies."
+    assert record.error is None
+
+
+def test_run_second_time_raises_not_runnable(
+    task_service: TaskService,
+):
+    from app.services.errors import TaskNotRunnable
+    from tests.test_agent_loop import FakeLLMClient, _text_response
+    from app.tools.registry import build_read_only_registry
+
+    task = task_service.create(REQUESTS_URL, INSTRUCTION)
+    registry = build_read_only_registry()
+    task_service.run(
+        task.id, FakeLLMClient([_text_response("done")]), registry
+    )
+
+    with pytest.raises(TaskNotRunnable, match="not runnable"):
+        task_service.run(
+            task.id, FakeLLMClient([_text_response("again")]), registry
+        )
+
+
+def test_run_missing_workspace_raises_not_runnable(
+    task_service: TaskService,
+    repository_service: RepositoryService,
+):
+    from app.services.errors import TaskNotRunnable
+    from tests.test_agent_loop import FakeLLMClient, _text_response
+    from app.tools.registry import build_read_only_registry
+    from app.repositories.workspace import remove as remove_workspace
+
+    task = task_service.create(REQUESTS_URL, INSTRUCTION)
+    remove_workspace(repository_service.workspace_path_for(task.id))
+
+    with pytest.raises(TaskNotRunnable, match="workspace"):
+        task_service.run(
+            task.id,
+            FakeLLMClient([_text_response("x")]),
+            build_read_only_registry(),
+        )
+
+
+def test_run_llm_error_persists_failed(
+    db_session: Session, task_service: TaskService
+):
+    from app.llm import LLMError
+    from tests.test_agent_loop import FakeLLMClient
+    from app.tools.registry import build_read_only_registry
+
+    task = task_service.create(REQUESTS_URL, INSTRUCTION)
+    result = task_service.run(
+        task.id,
+        FakeLLMClient([LLMError("OpenAI request failed.")]),
+        build_read_only_registry(),
+    )
+
+    assert result.error == "OpenAI request failed."
+    record = db_session.get(TaskRecord, task.id)
+    assert record is not None
+    assert record.status == TaskStatus.FAILED.value
+    assert record.error == "OpenAI request failed."
+    assert record.result is None
+
+
+def test_run_halt_persists_completed_with_prefix(
+    db_session: Session, task_service: TaskService, monkeypatch: pytest.MonkeyPatch
+):
+    from types import SimpleNamespace
+    from tests.test_agent_loop import FakeLLMClient
+    from app.tools.registry import build_read_only_registry
+
+    monkeypatch.setenv("AGENT_MAX_ITERATIONS", "1")
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+
+    call = SimpleNamespace(
+        type="function_call",
+        call_id="c1",
+        name="list_files",
+        arguments='{"path": "."}',
+        id=None,
+    )
+    tool_response = SimpleNamespace(
+        output=[call],
+        output_text="",
+        usage=SimpleNamespace(total_tokens=5),
+    )
+
+    task = task_service.create(REQUESTS_URL, INSTRUCTION)
+    result = task_service.run(
+        task.id,
+        FakeLLMClient([tool_response]),
+        build_read_only_registry(),
+    )
+
+    assert result.halt_reason == "max_iterations"
+    record = db_session.get(TaskRecord, task.id)
+    assert record is not None
+    assert record.status == TaskStatus.COMPLETED.value
+    assert record.result is not None
+    assert record.result.startswith("[halted: max_iterations]")
+    assert record.error is None
+
+    get_settings.cache_clear()

@@ -15,6 +15,7 @@ from app.repositories.errors import CloneError
 from app.repositories.service import RepositoryService
 from app.repositories.workspace import remove as remove_workspace
 from app.schemas.task import TaskStatus
+from app.services.errors import TaskNotFound, TaskNotRunnable
 from app.tools.base import ToolContext
 from app.tools.registry import ToolRegistry
 
@@ -26,6 +27,8 @@ class Task:
     instruction: str
     status: TaskStatus
     created_at: datetime
+    result: str | None = None
+    error: str | None = None
 
 
 class TaskService:
@@ -95,19 +98,32 @@ class TaskService:
     def run(
         self, task_id: UUID, llm: OpenAILLMClient, registry: ToolRegistry
     ) -> AgentResult:
-        # Persistence / 404 / 409 gates land in step 6; this only invokes the loop.
         row = self._session.execute(
             select(TaskRecord, RepositoryRecord)
             .join(RepositoryRecord, TaskRecord.repository_id == RepositoryRecord.id)
             .where(TaskRecord.id == task_id)
         ).first()
-        assert row
+        if row is None:
+            raise TaskNotFound()
+
         task_record, repository_record = row
 
-        settings = get_settings()
-        workspace_root = self._repository_service.workspace_path_for(task_id)
+        if task_record.status != TaskStatus.PENDING.value:
+            raise TaskNotRunnable(
+                f"task is not runnable (status={task_record.status})"
+            )
 
-        return run_agent(
+        workspace_root = self._repository_service.workspace_path_for(task_id)
+        if not workspace_root.is_dir():
+            raise TaskNotRunnable("workspace missing or incomplete")
+
+        now = datetime.now(UTC)
+        task_record.status = TaskStatus.RUNNING.value
+        task_record.updated_at = now
+        self._session.flush()
+
+        settings = get_settings()
+        agent_result = run_agent(
             instruction=task_record.instruction,
             context=ToolContext(workspace_root=workspace_root.resolve()),
             registry=registry,
@@ -123,6 +139,24 @@ class TaskService:
             head_sha=repository_record.last_commit_sha,
         )
 
+        now = datetime.now(UTC)
+        if agent_result.error:
+            task_record.status = TaskStatus.FAILED.value
+            task_record.error = agent_result.error
+            task_record.result = None
+        else:
+            # Success and limit-halt both land as completed.
+            task_record.status = TaskStatus.COMPLETED.value
+            answer = agent_result.answer
+            if agent_result.halt_reason:
+                answer = f"[halted: {agent_result.halt_reason}]\n{answer}"
+            task_record.result = answer
+            task_record.error = None
+
+        task_record.updated_at = now
+        self._session.flush()
+        return agent_result
+
 
 def _to_task(record: TaskRecord, repository_record: RepositoryRecord) -> Task:
     return Task(
@@ -131,4 +165,6 @@ def _to_task(record: TaskRecord, repository_record: RepositoryRecord) -> Task:
         instruction=record.instruction,
         status=TaskStatus(record.status),
         created_at=record.created_at,
+        result=record.result,
+        error=record.error,
     )
