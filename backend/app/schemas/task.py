@@ -1,6 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from uuid import UUID
+
 from pydantic import BaseModel, Field, HttpUrl
 
 
@@ -26,11 +27,17 @@ class TaskResponse(BaseModel):
     error: str | None = None
 
 
+class ToolCallSummaryResponse(BaseModel):
+    name: str
+    ok: bool
+    duration_ms: int
+
+
 class TaskRunResponse(BaseModel):
     task_id: UUID
     status: TaskStatus
     answer: str
     halt_reason: str | None
     iterations: int
-    tool_calls: list
+    tool_calls: list[ToolCallSummaryResponse]
     error: str | None

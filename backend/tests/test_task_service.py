@@ -123,13 +123,13 @@ def test_subprocess_is_confined_to_allowed_modules():
 
 def test_run_unknown_task_raises_not_found(task_service: TaskService):
     from app.services.errors import TaskNotFound
-    from tests.test_agent_loop import FakeLLMClient, _text_response
     from app.tools.registry import build_read_only_registry
+    from tests.llm_fakes import FakeLLMClient, text_response
 
     with pytest.raises(TaskNotFound):
         task_service.run(
             UUID("00000000-0000-0000-0000-000000000000"),
-            FakeLLMClient([_text_response("x")]),
+            FakeLLMClient([text_response("x")]),
             build_read_only_registry(),
         )
 
@@ -137,11 +137,11 @@ def test_run_unknown_task_raises_not_found(task_service: TaskService):
 def test_run_success_persists_completed_result(
     db_session: Session, task_service: TaskService
 ):
-    from tests.test_agent_loop import FakeLLMClient, _text_response
     from app.tools.registry import build_read_only_registry
+    from tests.llm_fakes import FakeLLMClient, text_response
 
     task = task_service.create(REQUESTS_URL, INSTRUCTION)
-    llm = FakeLLMClient([_text_response("Session handles cookies.")])
+    llm = FakeLLMClient([text_response("Session handles cookies.")])
 
     result = task_service.run(task.id, llm, build_read_only_registry())
 
@@ -154,22 +154,18 @@ def test_run_success_persists_completed_result(
     assert record.error is None
 
 
-def test_run_second_time_raises_not_runnable(
-    task_service: TaskService,
-):
+def test_run_second_time_raises_not_runnable(task_service: TaskService):
     from app.services.errors import TaskNotRunnable
-    from tests.test_agent_loop import FakeLLMClient, _text_response
     from app.tools.registry import build_read_only_registry
+    from tests.llm_fakes import FakeLLMClient, text_response
 
     task = task_service.create(REQUESTS_URL, INSTRUCTION)
     registry = build_read_only_registry()
-    task_service.run(
-        task.id, FakeLLMClient([_text_response("done")]), registry
-    )
+    task_service.run(task.id, FakeLLMClient([text_response("done")]), registry)
 
     with pytest.raises(TaskNotRunnable, match="not runnable"):
         task_service.run(
-            task.id, FakeLLMClient([_text_response("again")]), registry
+            task.id, FakeLLMClient([text_response("again")]), registry
         )
 
 
@@ -177,10 +173,10 @@ def test_run_missing_workspace_raises_not_runnable(
     task_service: TaskService,
     repository_service: RepositoryService,
 ):
-    from app.services.errors import TaskNotRunnable
-    from tests.test_agent_loop import FakeLLMClient, _text_response
-    from app.tools.registry import build_read_only_registry
     from app.repositories.workspace import remove as remove_workspace
+    from app.services.errors import TaskNotRunnable
+    from app.tools.registry import build_read_only_registry
+    from tests.llm_fakes import FakeLLMClient, text_response
 
     task = task_service.create(REQUESTS_URL, INSTRUCTION)
     remove_workspace(repository_service.workspace_path_for(task.id))
@@ -188,7 +184,7 @@ def test_run_missing_workspace_raises_not_runnable(
     with pytest.raises(TaskNotRunnable, match="workspace"):
         task_service.run(
             task.id,
-            FakeLLMClient([_text_response("x")]),
+            FakeLLMClient([text_response("x")]),
             build_read_only_registry(),
         )
 
@@ -197,8 +193,8 @@ def test_run_llm_error_persists_failed(
     db_session: Session, task_service: TaskService
 ):
     from app.llm import LLMError
-    from tests.test_agent_loop import FakeLLMClient
     from app.tools.registry import build_read_only_registry
+    from tests.llm_fakes import FakeLLMClient
 
     task = task_service.create(REQUESTS_URL, INSTRUCTION)
     result = task_service.run(
@@ -218,32 +214,17 @@ def test_run_llm_error_persists_failed(
 def test_run_halt_persists_completed_with_prefix(
     db_session: Session, task_service: TaskService, monkeypatch: pytest.MonkeyPatch
 ):
-    from types import SimpleNamespace
-    from tests.test_agent_loop import FakeLLMClient
+    from app.config import get_settings
     from app.tools.registry import build_read_only_registry
+    from tests.llm_fakes import FakeLLMClient, tool_call_response
 
     monkeypatch.setenv("AGENT_MAX_ITERATIONS", "1")
-    from app.config import get_settings
-
     get_settings.cache_clear()
-
-    call = SimpleNamespace(
-        type="function_call",
-        call_id="c1",
-        name="list_files",
-        arguments='{"path": "."}',
-        id=None,
-    )
-    tool_response = SimpleNamespace(
-        output=[call],
-        output_text="",
-        usage=SimpleNamespace(total_tokens=5),
-    )
 
     task = task_service.create(REQUESTS_URL, INSTRUCTION)
     result = task_service.run(
         task.id,
-        FakeLLMClient([tool_response]),
+        FakeLLMClient([tool_call_response()]),
         build_read_only_registry(),
     )
 

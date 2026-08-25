@@ -144,6 +144,7 @@ def test_openapi_includes_task_paths(client):
     paths = response.json()["paths"]
     assert "/tasks" in paths
     assert "/tasks/{task_id}" in paths
+    assert "/tasks/{task_id}/run" in paths
 
 
 def test_create_task_rejects_localhost(client):

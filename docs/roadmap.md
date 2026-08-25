@@ -24,7 +24,7 @@ Rules that apply to every phase:
 | 3 | PostgreSQL via Supabase | PostgreSQL | Complete |
 | 4 | Repository management | Git CLI | Complete |
 | 5 | Repository context tools | ripgrep | Complete |
-| 6 | OpenAI agent loop | OpenAI API | Active |
+| 6 | OpenAI agent loop | OpenAI API | Complete |
 | 7 | Agent runs | None | Not started |
 | 8 | Semantic retrieval | Pinecone | Not started |
 | 9 | Background execution | Redis | Not started |

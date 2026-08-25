@@ -2,20 +2,20 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.agent.types import AgentResult
 from app.api.dependencies import get_llm_client, get_task_service, get_tool_registry
+from app.llm.client import OpenAILLMClient
 from app.repositories.errors import CloneError, InvalidRepositoryUrl
 from app.schemas.task import (
     TaskCreateRequest,
     TaskResponse,
     TaskRunResponse,
     TaskStatus,
+    ToolCallSummaryResponse,
 )
-from app.services.task_service import Task, TaskService
-
-from app.agent.types import AgentResult
-from app.llm.client import OpenAILLMClient
-from app.tools.registry import ToolRegistry
 from app.services.errors import TaskNotFound, TaskNotRunnable
+from app.services.task_service import Task, TaskService
+from app.tools.registry import ToolRegistry
 
 router = APIRouter(tags=["tasks"])
 
@@ -91,6 +91,11 @@ def _to_task_run_response(task_id: UUID, agent_result: AgentResult) -> TaskRunRe
         answer=agent_result.answer,
         halt_reason=agent_result.halt_reason,
         iterations=agent_result.iterations,
-        tool_calls=agent_result.tool_calls,
+        tool_calls=[
+            ToolCallSummaryResponse(
+                name=call.name, ok=call.ok, duration_ms=call.duration_ms
+            )
+            for call in agent_result.tool_calls
+        ],
         error=agent_result.error,
     )

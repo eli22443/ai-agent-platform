@@ -15,7 +15,7 @@ This document describes the target architecture. Every component is annotated wi
 
 ## Status
 
-Phases 1–5 are implemented in `backend/`. Phase 6 (OpenAI agent loop, `POST /tasks/{task_id}/run`) is the active specification — see [phases/phase-06.md](phases/phase-06.md). Components marked Phase 7+ do not exist yet unless noted.
+Phases 1–6 are implemented in `backend/`. Phase 7 (`agent_runs` / `tool_calls` persistence) is next — see [roadmap.md](roadmap.md). Components marked Phase 7+ do not exist yet unless noted.
 
 ## Target architecture
 
@@ -113,7 +113,7 @@ Langfuse for LLM and agent tracing, OpenTelemetry for application-level traces a
 
 ## Request-to-result data flow
 
-### Phase 6 MVP (current target)
+### Phase 6 MVP (implemented)
 
 Clone and agent are separate HTTP calls. Both are synchronous on the request (debt repaid in Phase 9).
 
@@ -214,7 +214,7 @@ Notes:
 
 ## Repository layout
 
-Current layout (Phases 1–5 landed; Phase 6 not implemented yet):
+Current layout (Phases 1–6 landed):
 
 ```text
 ai-agent-platform/
@@ -227,7 +227,9 @@ ai-agent-platform/
 │   │   ├── schemas/, services/
 │   │   ├── database/               # SQLAlchemy + Alembic
 │   │   ├── repositories/           # Git clone, SSRF, workspace
-│   │   └── tools/                  # read-only tool registry
+│   │   ├── tools/                  # read-only tool registry
+│   │   ├── llm/                    # OpenAI Responses client
+│   │   └── agent/                  # prompts, limits, dispatch, loop
 │   ├── tests/
 │   ├── pyproject.toml
 │   └── uv.lock
@@ -240,7 +242,6 @@ ai-agent-platform/
 Target additions by later phase (do not create placeholders early):
 
 ```text
-backend/app/llm/, agent/            Phase 6
 backend/app/retrieval/              Phase 8
 backend/app/workers/                Phase 9
 backend/app/sandbox/                Phase 10
