@@ -19,3 +19,12 @@ class TaskResponse(BaseModel):
     repository_url: str
     instruction: str
     created_at: datetime    
+    
+class TaskRunResponse(BaseModel):
+    task_id: UUID
+    status: TaskStatus
+    answer: str
+    halt_reason: str | None
+    iterations: int
+    tool_calls: list
+    error: str | None

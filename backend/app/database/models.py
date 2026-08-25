@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database.base import Base
 
 
-class Repository(Base):
+class RepositoryRecord(Base):
     __tablename__ = "repositories"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -38,7 +38,7 @@ class TaskRecord(Base):
     )
 
 
-class AgentRun(Base):
+class AgentRunRecord(Base):
     __tablename__ = "agent_runs"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)

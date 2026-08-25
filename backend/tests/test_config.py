@@ -25,6 +25,12 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("TOOL_SEARCH_MAX_RESULTS", raising=False)
     monkeypatch.delenv("TOOL_SEARCH_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("TOOL_GIT_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("AGENT_MAX_ITERATIONS", raising=False)
+    monkeypatch.delenv("AGENT_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("AGENT_MAX_OUTPUT_TOKENS", raising=False)
+    monkeypatch.delenv("AGENT_TOKEN_BUDGET", raising=False)
 
     settings = Settings(database_url=TEST_DATABASE_URL, _env_file=None)  # type: ignore[call-arg]
 
@@ -43,6 +49,12 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch):
     assert settings.tool_search_max_results == 50
     assert settings.tool_search_timeout_seconds == 30
     assert settings.tool_git_timeout_seconds == 30
+    assert settings.openai_api_key == ""
+    assert settings.openai_model == "gpt-4.1-mini"
+    assert settings.agent_max_iterations == 20
+    assert settings.agent_timeout_seconds == 180
+    assert settings.agent_max_output_tokens == 8192
+    assert settings.agent_token_budget == 0
 
 
 def test_settings_from_environment(monkeypatch: pytest.MonkeyPatch):
@@ -59,6 +71,12 @@ def test_settings_from_environment(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("TOOL_SEARCH_MAX_RESULTS", "5")
     monkeypatch.setenv("TOOL_SEARCH_TIMEOUT_SECONDS", "15")
     monkeypatch.setenv("TOOL_GIT_TIMEOUT_SECONDS", "20")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1")
+    monkeypatch.setenv("AGENT_MAX_ITERATIONS", "5")
+    monkeypatch.setenv("AGENT_TIMEOUT_SECONDS", "60")
+    monkeypatch.setenv("AGENT_MAX_OUTPUT_TOKENS", "2048")
+    monkeypatch.setenv("AGENT_TOKEN_BUDGET", "10000")
 
     settings = Settings(database_url=TEST_DATABASE_URL, _env_file=None)  # type: ignore[call-arg]
 
@@ -75,6 +93,12 @@ def test_settings_from_environment(monkeypatch: pytest.MonkeyPatch):
     assert settings.tool_search_max_results == 5
     assert settings.tool_search_timeout_seconds == 15
     assert settings.tool_git_timeout_seconds == 20
+    assert settings.openai_api_key == "sk-test"
+    assert settings.openai_model == "gpt-4.1"
+    assert settings.agent_max_iterations == 5
+    assert settings.agent_timeout_seconds == 60
+    assert settings.agent_max_output_tokens == 2048
+    assert settings.agent_token_budget == 10000
 
 
 def test_settings_rejects_invalid_env(monkeypatch: pytest.MonkeyPatch):

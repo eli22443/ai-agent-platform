@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database.models import Repository, TaskRecord
+from app.database.models import RepositoryRecord, TaskRecord
 from app.repositories.errors import CloneError, InvalidRepositoryUrl
 from app.repositories.service import RepositoryService
 from app.schemas.task import TaskStatus
@@ -58,11 +58,11 @@ def test_create_success_sets_commit_metadata(
 ):
     task_service.create(REQUESTS_URL, INSTRUCTION)
 
-    repository = db_session.scalars(
-        select(Repository).where(Repository.url == REQUESTS_URL)
+    repository_record = db_session.scalars(
+        select(RepositoryRecord).where(RepositoryRecord.url == REQUESTS_URL)
     ).one()
-    assert repository.last_commit_sha == "abc123def456"
-    assert repository.default_branch == "main"
+    assert repository_record.last_commit_sha == "abc123def456"
+    assert repository_record.default_branch == "main"
 
 
 def test_invalid_url_does_not_create_rows(
@@ -71,7 +71,7 @@ def test_invalid_url_does_not_create_rows(
     with pytest.raises(InvalidRepositoryUrl):
         task_service.create("https://127.0.0.1/secret", INSTRUCTION)
 
-    assert db_session.scalars(select(Repository)).all() == []
+    assert db_session.scalars(select(RepositoryRecord)).all() == []
     assert db_session.scalars(select(TaskRecord)).all() == []
 
 

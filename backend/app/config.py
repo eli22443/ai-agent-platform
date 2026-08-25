@@ -16,8 +16,10 @@ class Settings(BaseSettings):
     app_env: Literal["local", "test", "production"] = "local"
     log_level: str = "INFO"
     debug: bool = False
+    
     workspaces_root: Path = Path(".workspaces")
     git_clone_timeout_seconds: int = 120
+    
     max_repo_size_mb: int = 200
     git_allowed_hosts: Annotated[tuple[str, ...], NoDecode] = _DEFAULT_GIT_ALLOWED_HOSTS
     ripgrep_path: str = "rg"
@@ -26,6 +28,14 @@ class Settings(BaseSettings):
     tool_search_max_results: int = 50
     tool_search_timeout_seconds: int = 30
     tool_git_timeout_seconds: int = 30
+    
+    # Empty allowed so Settings can load in tests; OpenAILLMClient rejects empty at call time.
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4.1-mini"
+    agent_max_iterations: int = 20
+    agent_timeout_seconds: int = 180
+    agent_max_output_tokens: int = 8192
+    agent_token_budget: int = 0
 
     @field_validator("git_allowed_hosts", mode="before")
     @classmethod

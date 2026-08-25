@@ -6,7 +6,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import get_settings
-from app.database.models import Repository, TaskRecord
+from app.database.models import RepositoryRecord, TaskRecord
 from app.main import create_app
 from app.services.task_service import TaskService
 
@@ -47,7 +47,7 @@ def test_create_reuses_repository_row_for_same_url(
     service.create(REQUESTS_URL, INSTRUCTION)
     service.create(REQUESTS_URL, OTHER_INSTRUCTION)
 
-    repositories = db_session.scalars(select(Repository)).all()
+    repositories = db_session.scalars(select(RepositoryRecord)).all()
     tasks = db_session.scalars(select(TaskRecord)).all()
 
     assert len(repositories) == 1
@@ -62,7 +62,7 @@ def test_create_separate_urls_create_separate_repositories(
     service.create(REQUESTS_URL, INSTRUCTION)
     service.create(HTTPX_URL, OTHER_INSTRUCTION)
 
-    urls = set(db_session.scalars(select(Repository.url)).all())
+    urls = set(db_session.scalars(select(RepositoryRecord.url)).all())
     assert urls == {REQUESTS_URL, HTTPX_URL}
 
 
@@ -74,12 +74,12 @@ def test_task_row_has_foreign_key_to_repository(
     )
 
     record = db_session.get(TaskRecord, task.id)
-    repository = db_session.scalars(
-        select(Repository).where(Repository.url == REQUESTS_URL)
+    repository_record = db_session.scalars(
+        select(RepositoryRecord).where(RepositoryRecord.url == REQUESTS_URL)
     ).one()
 
     assert record is not None
-    assert record.repository_id == repository.id
+    assert record.repository_id == repository_record.id
 
 
 def test_get_unknown_task_returns_none_from_new_session(
