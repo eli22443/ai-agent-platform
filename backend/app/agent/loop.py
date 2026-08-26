@@ -2,13 +2,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.agent.dispatch import dispatch_tool_calls, extract_function_calls
+from app.agent.dispatch import (
+    DispatchCache,
+    dispatch_tool_calls,
+    extract_function_calls,
+)
 from app.agent.limits import AgentLimits, LimitTracker
 from app.agent.prompts import build_system_prompt, build_user_message
 from app.agent.types import AgentResult, ToolCallSummary
 from app.llm import LLMClient, LLMError
 from app.tools.base import ToolContext
 from app.tools.registry import ToolRegistry
+
+_BUDGET_NUDGE = (
+    "You are near the tool-call budget. Prefer a final plain-text answer now "
+    "using evidence already gathered. Only call a tool if strictly necessary."
+)
 
 
 def run_agent(
@@ -45,11 +54,21 @@ def run_agent(
     tracker = LimitTracker(limits)
     summaries: list[ToolCallSummary] = []
     partial = ""
+    cache = DispatchCache()
+    budget_nudge_sent = False
 
     while True:
         reason = tracker.check()
         if reason:
             return _halt(partial, reason, tracker, summaries)
+
+        if (
+            not budget_nudge_sent
+            and tracker.iterations > 0
+            and limits.max_iterations - tracker.iterations <= 2
+        ):
+            input_list.append({"role": "user", "content": _BUDGET_NUDGE})
+            budget_nudge_sent = True
 
         try:
             response = llm.create_response(
@@ -91,9 +110,14 @@ def run_agent(
         if reason:
             return _halt(partial, reason, tracker, summaries)
 
-        input_list.extend(_function_calls_as_input(tool_calls))
+        # Reasoning models (gpt-5*) require paired reasoning items when
+        # replaying function_call items on the next turn.
+        input_list.extend(_model_output_as_input(response.output))
         dispatched = dispatch_tool_calls(
-            tool_calls, registry=registry, context=context
+            tool_calls,
+            registry=registry,
+            context=context,
+            cache=cache,
         )
         input_list.extend(dispatched.output_items)
         summaries.extend(dispatched.summaries)
@@ -130,31 +154,57 @@ def _output_text(response: Any) -> str:
     return "".join(parts)
 
 
-def _function_calls_as_input(calls: list[Any]) -> list[dict[str, Any]]:
-    items: list[dict[str, Any]] = []
-    for call in calls:
-        if hasattr(call, "model_dump"):
-            dumped = call.model_dump(exclude_none=True)
-            # Keep only fields the Responses API expects when replaying input.
-            item = {
-                "type": "function_call",
-                "call_id": dumped["call_id"],
-                "name": dumped["name"],
-                "arguments": dumped["arguments"],
-            }
-            if dumped.get("id"):
-                item["id"] = dumped["id"]
-            items.append(item)
-            continue
+def _model_output_as_input(output: list[Any] | None) -> list[dict[str, Any]]:
+    """Echo model output items needed for the next Responses API turn.
 
+    Preserve order: reasoning items must accompany their function_call items.
+    All function_calls are collected before function_call_outputs (caller).
+    """
+    items: list[dict[str, Any]] = []
+    for item in output or []:
+        item_type = getattr(item, "type", None)
+        if item_type == "reasoning":
+            items.append(_reasoning_as_input(item))
+        elif item_type == "function_call":
+            items.append(_function_call_as_input(item))
+    return items
+
+
+def _reasoning_as_input(item: Any) -> dict[str, Any]:
+    if hasattr(item, "model_dump"):
+        dumped = item.model_dump(exclude_none=True)
+        # Keep opaque reasoning payload fields the API expects on replay.
+        keep = {"type", "id", "summary", "encrypted_content", "status"}
+        return {key: dumped[key] for key in keep if key in dumped}
+
+    result: dict[str, Any] = {"type": "reasoning"}
+    for key in ("id", "summary", "encrypted_content", "status"):
+        value = getattr(item, key, None)
+        if value is not None:
+            result[key] = value
+    return result
+
+
+def _function_call_as_input(call: Any) -> dict[str, Any]:
+    if hasattr(call, "model_dump"):
+        dumped = call.model_dump(exclude_none=True)
         item = {
             "type": "function_call",
-            "call_id": getattr(call, "call_id"),
-            "name": getattr(call, "name"),
-            "arguments": getattr(call, "arguments"),
+            "call_id": dumped["call_id"],
+            "name": dumped["name"],
+            "arguments": dumped["arguments"],
         }
-        call_id = getattr(call, "id", None)
-        if call_id:
-            item["id"] = call_id
-        items.append(item)
-    return items
+        if dumped.get("id"):
+            item["id"] = dumped["id"]
+        return item
+
+    item = {
+        "type": "function_call",
+        "call_id": getattr(call, "call_id"),
+        "name": getattr(call, "name"),
+        "arguments": getattr(call, "arguments"),
+    }
+    call_id = getattr(call, "id", None)
+    if call_id:
+        item["id"] = call_id
+    return item

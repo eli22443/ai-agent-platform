@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from openai import APIError, AuthenticationError
+from openai import APIError, AuthenticationError, BadRequestError
 
 from app.llm.client import LLMError, OpenAILLMClient
 
@@ -15,7 +15,7 @@ def test_create_response_returns_sdk_response(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(client._client.responses, "create", mock_create)
 
     result = client.create_response(
-        model="gpt-4.1-mini",
+        model="gpt-5.4-mini",
         input="Explain Session",
         tools=[],
         instructions="You are a coding assistant.",
@@ -23,7 +23,7 @@ def test_create_response_returns_sdk_response(monkeypatch: pytest.MonkeyPatch):
 
     assert result is fake_response
     kwargs = mock_create.call_args.kwargs
-    assert kwargs["model"] == "gpt-4.1-mini"
+    assert kwargs["model"] == "gpt-5.4-mini"
     assert kwargs["input"] == "Explain Session"
     assert kwargs["tools"] == []
     assert kwargs["instructions"] == "You are a coding assistant."
@@ -42,7 +42,29 @@ def test_create_response_wraps_auth_error(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(client._client.responses, "create", mock_create)
 
     with pytest.raises(LLMError, match="authentication"):
-        client.create_response(model="gpt-4.1-mini", input="hi", tools=[])
+        client.create_response(model="gpt-5.4-mini", input="hi", tools=[])
+
+
+def test_create_response_wraps_bad_request_with_detail(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mock_create = MagicMock(
+        side_effect=BadRequestError(
+            message="function_call missing reasoning item",
+            response=MagicMock(status_code=400, headers={}),
+            body={
+                "error": {
+                    "message": "function_call missing reasoning item",
+                    "type": "invalid_request_error",
+                }
+            },
+        )
+    )
+    client = OpenAILLMClient(api_key="sk-test")
+    monkeypatch.setattr(client._client.responses, "create", mock_create)
+
+    with pytest.raises(LLMError, match="function_call missing reasoning item"):
+        client.create_response(model="gpt-5.4-mini", input="hi", tools=[])
 
 
 def test_create_response_wraps_api_error(monkeypatch: pytest.MonkeyPatch):
@@ -57,11 +79,11 @@ def test_create_response_wraps_api_error(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(client._client.responses, "create", mock_create)
 
     with pytest.raises(LLMError, match="request failed"):
-        client.create_response(model="gpt-4.1-mini", input="hi", tools=[])
+        client.create_response(model="gpt-5.4-mini", input="hi", tools=[])
 
 
 def test_create_response_rejects_empty_api_key():
     client = OpenAILLMClient(api_key="")
 
     with pytest.raises(LLMError, match="not configured"):
-        client.create_response(model="gpt-4.1-mini", input="hi", tools=[])
+        client.create_response(model="gpt-5.4-mini", input="hi", tools=[])

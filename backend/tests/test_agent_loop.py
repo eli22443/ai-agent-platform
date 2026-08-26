@@ -24,7 +24,7 @@ def _run(
         llm=llm,
         limits=limits
         or AgentLimits(max_iterations=10, timeout_seconds=60, token_budget=0),
-        model="gpt-4.1-mini",
+        model="gpt-5.4-mini",
         repository_url="https://github.com/example/repo",
         branch="main",
         head_sha="abc123",
@@ -67,6 +67,29 @@ def test_one_tool_call_then_final_answer(tmp_path: Path):
     types = [item.get("type") for item in llm.last_input if isinstance(item, dict)]
     assert "function_call" in types
     assert "function_call_output" in types
+
+
+def test_reasoning_item_echoed_before_function_call_output(tmp_path: Path):
+    workspace = write_repo_fixture(tmp_path / "workspace")
+    llm = FakeLLMClient(
+        [
+            tool_call_response(reasoning_id="rs_test_1"),
+            text_response("Used prior reasoning."),
+        ]
+    )
+
+    result = _run(llm=llm, workspace=workspace)
+
+    assert result.completed is True
+    second_input = llm.inputs[1]
+    types = [item.get("type") for item in second_input if isinstance(item, dict)]
+    assert "reasoning" in types
+    assert "function_call" in types
+    assert "function_call_output" in types
+    reasoning_idx = types.index("reasoning")
+    call_idx = types.index("function_call")
+    output_idx = types.index("function_call_output")
+    assert reasoning_idx < call_idx < output_idx
 
 
 def test_tool_ok_false_still_completes(tmp_path: Path):
@@ -143,3 +166,32 @@ def test_llm_error_sets_error(tmp_path: Path):
     assert result.halt_reason is None
     assert result.error == "OpenAI request failed."
     assert result.iterations == 0
+
+
+def test_budget_nudge_appended_near_iteration_cap(tmp_path: Path):
+    workspace = write_repo_fixture(tmp_path / "workspace")
+    llm = FakeLLMClient(
+        [
+            tool_call_response(call_id="c1"),
+            tool_call_response(call_id="c2"),
+            text_response("Done with what I have."),
+        ]
+    )
+
+    result = _run(
+        llm=llm,
+        workspace=workspace,
+        limits=AgentLimits(max_iterations=3, timeout_seconds=60, token_budget=0),
+    )
+
+    assert result.completed is True
+    assert result.answer == "Done with what I have."
+    assert llm.calls == 3
+    # After the first tool turn (iterations=1), remaining is 2 → nudge before 2nd LLM call.
+    assert len(llm.inputs) == 3
+    nudge_texts = [
+        item.get("content", "")
+        for item in llm.inputs[1]
+        if isinstance(item, dict) and item.get("role") == "user"
+    ]
+    assert any("near the tool-call budget" in text for text in nudge_texts)

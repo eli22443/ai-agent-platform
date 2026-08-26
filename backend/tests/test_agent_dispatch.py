@@ -2,7 +2,11 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from app.agent.dispatch import dispatch_tool_calls, extract_function_calls
+from app.agent.dispatch import (
+    DispatchCache,
+    dispatch_tool_calls,
+    extract_function_calls,
+)
 from app.tools.base import ToolContext
 from app.tools.registry import build_read_only_registry
 from tests.conftest import write_repo_fixture
@@ -105,3 +109,112 @@ def test_dispatch_tool_ok_false_still_returns_output(tmp_path: Path) -> None:
     assert payload["ok"] is False
     assert payload["error"]
     assert len(result.output_items) == 1
+
+
+def test_dispatch_dedupes_exact_repeat(tmp_path: Path) -> None:
+    workspace = write_repo_fixture(tmp_path / "workspace")
+    registry = build_read_only_registry()
+    context = ToolContext(workspace_root=workspace.resolve())
+    cache = DispatchCache()
+    args = '{"path": "src/main.py", "start_line": 1}'
+
+    first = dispatch_tool_calls(
+        [_call(name="read_file", arguments=args, call_id="c1")],
+        registry=registry,
+        context=context,
+        cache=cache,
+    )
+    second = dispatch_tool_calls(
+        [_call(name="read_file", arguments=args, call_id="c2")],
+        registry=registry,
+        context=context,
+        cache=cache,
+    )
+
+    first_payload = json.loads(first.output_items[0]["output"])
+    second_payload = json.loads(second.output_items[0]["output"])
+    assert first_payload["ok"] is True
+    assert "UNIQUE_FIXTURE_TOKEN" in first_payload["data"]["content"]
+    assert second_payload["ok"] is True
+    assert second_payload["data"]["deduplicated"] is True
+    assert "already ran" in second_payload["data"]["message"]
+
+
+def test_dispatch_dedupes_near_duplicate_read_window(tmp_path: Path) -> None:
+    workspace = write_repo_fixture(tmp_path / "workspace")
+    (workspace / "long.txt").write_text("\n".join(f"line-{i}" for i in range(100)))
+    registry = build_read_only_registry()
+    context = ToolContext(workspace_root=workspace.resolve())
+    cache = DispatchCache()
+
+    first = dispatch_tool_calls(
+        [
+            _call(
+                name="read_file",
+                arguments='{"path": "long.txt", "start_line": 1}',
+                call_id="c1",
+            )
+        ],
+        registry=registry,
+        context=context,
+        cache=cache,
+    )
+    near = dispatch_tool_calls(
+        [
+            _call(
+                name="read_file",
+                arguments='{"path": "long.txt", "start_line": 20}',
+                call_id="c2",
+            )
+        ],
+        registry=registry,
+        context=context,
+        cache=cache,
+    )
+    far = dispatch_tool_calls(
+        [
+            _call(
+                name="read_file",
+                arguments='{"path": "long.txt", "start_line": 80}',
+                call_id="c3",
+            )
+        ],
+        registry=registry,
+        context=context,
+        cache=cache,
+    )
+
+    assert json.loads(first.output_items[0]["output"])["ok"] is True
+    near_payload = json.loads(near.output_items[0]["output"])
+    assert near_payload["data"]["deduplicated"] is True
+    far_payload = json.loads(far.output_items[0]["output"])
+    assert far_payload["ok"] is True
+    assert not far_payload["data"].get("deduplicated")
+    assert "line-79" in far_payload["data"]["content"]
+
+
+def test_dispatch_dedupes_failed_search_retry(tmp_path: Path) -> None:
+    workspace = write_repo_fixture(tmp_path / "workspace")
+    registry = build_read_only_registry()
+    context = ToolContext(workspace_root=workspace.resolve())
+    cache = DispatchCache()
+    args = '{"query": "cookie", "path": "requests"}'
+
+    first = dispatch_tool_calls(
+        [_call(name="search_code", arguments=args, call_id="c1")],
+        registry=registry,
+        context=context,
+        cache=cache,
+    )
+    second = dispatch_tool_calls(
+        [_call(name="search_code", arguments=args, call_id="c2")],
+        registry=registry,
+        context=context,
+        cache=cache,
+    )
+
+    first_payload = json.loads(first.output_items[0]["output"])
+    second_payload = json.loads(second.output_items[0]["output"])
+    assert first_payload["ok"] is False
+    assert second_payload["data"]["deduplicated"] is True
+    assert "Prior error" in second_payload["data"]["message"]

@@ -62,16 +62,10 @@ class SearchCodeTool(Tool):
         timeout_seconds: int | None = None,
     ) -> None:
         settings = get_settings()
-        configured = (
-            ripgrep_path
-            if ripgrep_path is not None
-            else settings.ripgrep_path
-        )
+        configured = ripgrep_path if ripgrep_path is not None else settings.ripgrep_path
         self._rg_binary = resolve_ripgrep_binary(configured)
         self._default_max_results = (
-            max_results
-            if max_results is not None
-            else settings.tool_search_max_results
+            max_results if max_results is not None else settings.tool_search_max_results
         )
         self._timeout_seconds = (
             timeout_seconds

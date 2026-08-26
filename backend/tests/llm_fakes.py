@@ -10,10 +10,12 @@ class FakeLLMClient:
         self._scripts = list(scripts)
         self.calls = 0
         self.last_input: list | None = None
+        self.inputs: list[list] = []
 
     def create_response(self, *, model, input, tools, instructions=None):
         self.calls += 1
         self.last_input = input
+        self.inputs.append(list(input))
         if not self._scripts:
             raise AssertionError("unexpected LLM call")
         item = self._scripts.pop(0)
@@ -35,6 +37,7 @@ def tool_call_response(
     name: str = "list_files",
     arguments: str = '{"path": "."}',
     call_id: str = "call_1",
+    reasoning_id: str | None = None,
 ) -> SimpleNamespace:
     call = SimpleNamespace(
         type="function_call",
@@ -43,8 +46,20 @@ def tool_call_response(
         arguments=arguments,
         id=None,
     )
+    output: list = []
+    if reasoning_id is not None:
+        output.append(
+            SimpleNamespace(
+                type="reasoning",
+                id=reasoning_id,
+                summary=[],
+                encrypted_content=None,
+                status=None,
+            )
+        )
+    output.append(call)
     return SimpleNamespace(
-        output=[call],
+        output=output,
         output_text="",
         usage=SimpleNamespace(total_tokens=20),
     )

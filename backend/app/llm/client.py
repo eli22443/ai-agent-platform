@@ -7,6 +7,7 @@ from openai import (
     APIConnectionError,
     APIError,
     AuthenticationError,
+    BadRequestError,
     OpenAI,
     RateLimitError,
 )
@@ -75,6 +76,25 @@ class OpenAILLMClient:
         except APIConnectionError as exc:
             logger.exception("OpenAI connection failed")
             raise LLMError("Failed to connect to OpenAI.") from exc
+        except BadRequestError as exc:
+            logger.exception("OpenAI bad request")
+            detail = _api_error_detail(exc)
+            raise LLMError(f"OpenAI request failed: {detail}") from exc
         except APIError as exc:
             logger.exception("OpenAI API error")
             raise LLMError("OpenAI request failed.") from exc
+
+
+def _api_error_detail(exc: APIError) -> str:
+    message = getattr(exc, "message", None)
+    if isinstance(message, str) and message.strip():
+        return message.strip()
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict):
+            nested = err.get("message")
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
+    text = str(exc).strip()
+    return text or "invalid request"

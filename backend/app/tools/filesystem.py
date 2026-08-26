@@ -89,9 +89,7 @@ class ListFilesTool(Tool):
         for dirpath, dirnames, filenames in os.walk(start, followlinks=False):
             current = Path(dirpath)
             depth = len(current.relative_to(start).parts)
-            dirnames[:] = sorted(
-                name for name in dirnames if name not in SKIP_DIRS
-            )
+            dirnames[:] = sorted(name for name in dirnames if name not in SKIP_DIRS)
 
             if depth < arguments.max_depth:
                 for name in dirnames:
@@ -184,9 +182,7 @@ class ReadFileTool(Tool):
             return ToolResult(
                 ok=False,
                 data=None,
-                error=(
-                    f"start_line {start} is past end of file ({total_lines} lines)"
-                ),
+                error=(f"start_line {start} is past end of file ({total_lines} lines)"),
             )
 
         slice_lines = all_lines[start - 1 :]

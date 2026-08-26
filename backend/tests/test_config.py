@@ -50,7 +50,7 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch):
     assert settings.tool_search_timeout_seconds == 30
     assert settings.tool_git_timeout_seconds == 30
     assert settings.openai_api_key == ""
-    assert settings.openai_model == "gpt-4.1-mini"
+    assert settings.openai_model == "gpt-5.4-mini"
     assert settings.agent_max_iterations == 10
     assert settings.agent_timeout_seconds == 180
     assert settings.agent_max_output_tokens == 8192
