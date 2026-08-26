@@ -82,6 +82,7 @@ def test_read_file_on_fixture(tmp_path: Path) -> None:
     assert "UNIQUE_FIXTURE_TOKEN" in result.data["content"]
     assert result.data["start_line"] == 1
     assert result.data["end_line"] >= 1
+    assert result.data["total_lines"] >= 1
 
 
 def test_read_file_truncation(tmp_path: Path) -> None:
@@ -94,9 +95,43 @@ def test_read_file_truncation(tmp_path: Path) -> None:
 
     assert result.ok is True
     assert result.truncated is True
+    assert result.data["start_line"] == 1
     assert result.data["end_line"] == 5
+    assert result.data["total_lines"] == 20
     assert "line-0" in result.data["content"]
     assert "line-19" not in result.data["content"]
+
+
+def test_read_file_start_line_continues_past_window(tmp_path: Path) -> None:
+    workspace = write_repo_fixture(tmp_path / "workspace")
+    (workspace / "long.txt").write_text("\n".join(f"line-{i}" for i in range(20)))
+
+    first = ReadFileTool(max_bytes=10_000, max_lines=5).execute(
+        _context(workspace), ReadFileInput(path="long.txt")
+    )
+    second = ReadFileTool(max_bytes=10_000, max_lines=5).execute(
+        _context(workspace),
+        ReadFileInput(path="long.txt", start_line=first.data["end_line"] + 1),
+    )
+
+    assert first.truncated is True
+    assert second.ok is True
+    assert second.data["start_line"] == 6
+    assert second.data["end_line"] == 10
+    assert "line-5" in second.data["content"]
+    assert "line-0" not in second.data["content"]
+
+
+def test_read_file_start_line_past_eof(tmp_path: Path) -> None:
+    workspace = write_repo_fixture(tmp_path / "workspace")
+    (workspace / "short.txt").write_text("a\nb\n")
+
+    result = ReadFileTool().execute(
+        _context(workspace), ReadFileInput(path="short.txt", start_line=10)
+    )
+
+    assert result.ok is False
+    assert "past end of file" in (result.error or "")
 
 
 def test_read_file_missing(tmp_path: Path) -> None:

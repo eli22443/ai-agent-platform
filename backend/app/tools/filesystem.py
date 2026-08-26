@@ -29,6 +29,15 @@ class ListFilesInput(BaseModel):
 
 class ReadFileInput(BaseModel):
     path: str = Field(description="Relative path of the file to read.")
+    start_line: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "1-based line to start reading from. "
+            "If a previous read returned truncated=true, call again with "
+            "start_line=end_line+1. Do not re-read the same start_line."
+        ),
+    )
 
 
 class GetFileInfoInput(BaseModel):
@@ -122,8 +131,9 @@ class ReadFileTool(Tool):
     name: ClassVar[str] = "read_file"
     description: ClassVar[str] = (
         "Read a text file from the workspace as UTF-8. "
-        "Output is bounded by byte and line limits; truncated reads set truncated=true "
-        "and include the line range that was returned."
+        "Returns at most max_lines starting at start_line (also bounded by max_bytes). "
+        "If truncated=true, continue with start_line=end_line+1; "
+        "re-reading the same start_line returns the same content."
     )
     input_model: ClassVar[type[BaseModel]] = ReadFileInput
     mutating: ClassVar[bool] = False
@@ -154,29 +164,52 @@ class ReadFileTool(Tool):
         if not path.is_file():
             return ToolResult(ok=False, data=None, error="path is not a file")
 
-        raw = path.read_bytes()
+        text = path.read_bytes().decode("utf-8", errors="replace")
+        all_lines = text.splitlines()
+        total_lines = len(all_lines)
+        start = arguments.start_line
+
+        if start > total_lines and total_lines > 0:
+            return ToolResult(
+                ok=False,
+                data=None,
+                error=(
+                    f"start_line {start} is past end of file ({total_lines} lines)"
+                ),
+            )
+
+        slice_lines = all_lines[start - 1 :]
         truncated = False
-        if len(raw) > self._max_bytes:
-            raw = raw[: self._max_bytes]
+
+        if len(slice_lines) > self._max_lines:
+            slice_lines = slice_lines[: self._max_lines]
             truncated = True
 
-        text = raw.decode("utf-8", errors="replace")
-        lines = text.splitlines()
-        if len(lines) > self._max_lines:
-            lines = lines[: self._max_lines]
-            truncated = True
-            text = "\n".join(lines)
-            if text:
-                text += "\n"
+        content = "\n".join(slice_lines)
+        if content:
+            content += "\n"
 
-        end_line = len(lines)
+        encoded = content.encode("utf-8")
+        if len(encoded) > self._max_bytes:
+            encoded = encoded[: self._max_bytes]
+            content = encoded.decode("utf-8", errors="ignore")
+            if not content.endswith("\n") and "\n" in content:
+                content = content.rsplit("\n", 1)[0] + "\n"
+            slice_lines = content.splitlines()
+            truncated = True
+
+        end_line = start + len(slice_lines) - 1 if slice_lines else 0
+        if end_line < total_lines:
+            truncated = True
+
         return ToolResult(
             ok=True,
             data={
                 "path": arguments.path,
-                "content": text,
-                "start_line": 1 if end_line else 0,
+                "content": content,
+                "start_line": start if slice_lines else 0,
                 "end_line": end_line,
+                "total_lines": total_lines,
             },
             truncated=truncated,
         )

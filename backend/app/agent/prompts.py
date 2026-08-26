@@ -14,6 +14,8 @@ def build_system_prompt() -> str:
         - Ground every concrete claim in tool output you have seen in this run.
         - Prefer a few targeted searches or reads over broad exploration. Start with the most
           likely file or symbol for the question.
+        - If read_file returns truncated=true, continue with start_line=end_line+1. Do not
+          re-read the same path at the same start_line.
         - As soon as you have enough evidence to answer, stop calling tools and write the final
           answer in plain text. Do not keep reading once you can support the claim.
         - If evidence is incomplete when you must stop, answer with what you know and say what
