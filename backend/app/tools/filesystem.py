@@ -17,7 +17,11 @@ _LIST_MAX_ENTRIES = 1000
 class ListFilesInput(BaseModel):
     path: str = Field(
         default=".",
-        description="Relative directory to list within the workspace.",
+        min_length=1,
+        description=(
+            "Relative directory to list within the workspace. "
+            "Use '.' for the workspace root; never pass an empty path."
+        ),
     )
     max_depth: int = Field(
         default=3,
@@ -28,7 +32,10 @@ class ListFilesInput(BaseModel):
 
 
 class ReadFileInput(BaseModel):
-    path: str = Field(description="Relative path of the file to read.")
+    path: str = Field(
+        min_length=1,
+        description="Relative path of the file to read. Never pass an empty path.",
+    )
     start_line: int = Field(
         default=1,
         ge=1,
@@ -42,7 +49,11 @@ class ReadFileInput(BaseModel):
 
 class GetFileInfoInput(BaseModel):
     path: str = Field(
-        description="Relative path of the file or directory to inspect."
+        min_length=1,
+        description=(
+            "Relative path of the file or directory to inspect. "
+            "Never pass an empty path."
+        ),
     )
 
 

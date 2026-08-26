@@ -29,7 +29,11 @@ class SearchCodeInput(BaseModel):
     )
     path: str = Field(
         default=".",
-        description="Relative directory or file to restrict the search to.",
+        min_length=1,
+        description=(
+            "Relative directory or file to restrict the search to. "
+            "Use '.' for the whole workspace; never pass an empty path."
+        ),
     )
     max_results: int | None = Field(
         default=None,

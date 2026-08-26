@@ -10,6 +10,8 @@ def test_system_prompt_mentions_untrusted_data():
     assert "stop calling tools" in collapsed
     assert "final answer" in collapsed
     assert "start_line=end_line+1" in collapsed
+    assert "never pass an empty path" in collapsed
+    assert "obey explicit user constraints" in collapsed
     # No leading indentation from a raw triple-quoted block
     assert not build_system_prompt().startswith(" ")
 

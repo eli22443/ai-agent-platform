@@ -66,6 +66,22 @@ def test_execute_invalid_args_returns_error_without_raise(
     assert "invalid arguments" in result.error
 
 
+def test_execute_empty_path_returns_validation_error(tmp_path: Path) -> None:
+    workspace = write_repo_fixture(tmp_path / "workspace")
+    registry = build_read_only_registry()
+    context = ToolContext(workspace_root=workspace.resolve())
+
+    for name, arguments in (
+        ("list_files", {"path": ""}),
+        ("search_code", {"query": "cookie", "path": ""}),
+        ("read_file", {"path": ""}),
+        ("get_file_info", {"path": ""}),
+    ):
+        result = registry.execute(name, context, arguments)
+        assert result.ok is False, name
+        assert "invalid arguments" in (result.error or ""), name
+
+
 def test_execute_valid_read_file(tmp_path: Path) -> None:
     workspace = write_repo_fixture(tmp_path / "workspace")
     registry = build_read_only_registry()

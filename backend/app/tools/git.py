@@ -15,7 +15,11 @@ from app.tools.paths import WorkspacePathError, resolve_workspace_path
 class GetGitDiffInput(BaseModel):
     path: str | None = Field(
         default=None,
-        description="Optional relative path to restrict the diff to.",
+        min_length=1,
+        description=(
+            "Optional relative path to restrict the diff to. "
+            "Omit for the whole repo; never pass an empty path."
+        ),
     )
     staged: bool = Field(
         default=False,
@@ -26,7 +30,11 @@ class GetGitDiffInput(BaseModel):
 class GetGitHistoryInput(BaseModel):
     path: str | None = Field(
         default=None,
-        description="Optional relative path to restrict history to.",
+        min_length=1,
+        description=(
+            "Optional relative path to restrict history to. "
+            "Omit for the whole repo; never pass an empty path."
+        ),
     )
     limit: int = Field(
         default=10,
