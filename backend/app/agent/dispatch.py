@@ -43,7 +43,12 @@ def dispatch_tool_calls(
         duration_ms = max(0, int((time.perf_counter() - start) * 1000))
 
         summaries.append(
-            ToolCallSummary(name=name, ok=result.ok, duration_ms=duration_ms)
+            ToolCallSummary(
+                name=name,
+                args=getattr(call, "arguments", ""),
+                ok=result.ok,
+                duration_ms=duration_ms,
+            )
         )
         output_items.append(
             {

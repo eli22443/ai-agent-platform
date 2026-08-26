@@ -29,6 +29,7 @@ class TaskResponse(BaseModel):
 
 class ToolCallSummaryResponse(BaseModel):
     name: str
+    args: str
     ok: bool
     duration_ms: int
 

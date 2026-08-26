@@ -93,7 +93,7 @@ def _to_task_run_response(task_id: UUID, agent_result: AgentResult) -> TaskRunRe
         iterations=agent_result.iterations,
         tool_calls=[
             ToolCallSummaryResponse(
-                name=call.name, ok=call.ok, duration_ms=call.duration_ms
+                name=call.name, args=call.args, ok=call.ok, duration_ms=call.duration_ms
             )
             for call in agent_result.tool_calls
         ],
