@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines how the agent works: the tool-calling loop, the tool contract, the catalog of tools and when each arrives, and the safeguards that keep a run bounded. The tools landed in Phase 5. The agent loop is specified in [phases/phase-06.md](phases/phase-06.md) and is triggered by `POST /tasks/{task_id}/run` after clone (D22), not inline on `POST /tasks`.
+This document defines how the agent works: the tool-calling loop, the tool contract, the catalog of tools and when each arrives, and the safeguards that keep a run bounded. The tools landed in Phase 5. The agent loop landed in Phase 6 ([phases/phase-06.md](phases/phase-06.md)) and is triggered by `POST /tasks/{task_id}/run` after clone (D22), not inline on `POST /tasks`. Live-run hardening and model notes: [agent-optimization.md](agent-optimization.md).
 
 ## Design stance
 
@@ -105,7 +105,7 @@ Tools appear only in the phase that introduces them. Nothing below is stubbed in
 | Tool | Mutating | Phase | Notes |
 | --- | --- | --- | --- |
 | `list_files` | No | 5 | Directory listing scoped to the workspace, respecting ignore rules |
-| `read_file` | No | 5 | Byte- and line-bounded reads with explicit truncation |
+| `read_file` | No | 5 | Byte- and line-bounded reads with `start_line` pagination and explicit truncation |
 | `search_code` | No | 5 | ripgrep-backed lexical search |
 | `get_file_info` | No | 5 | Size, language, line count, existence |
 | `get_git_diff` | No | 5 | Working tree or commit-range diff |
@@ -130,7 +130,7 @@ An agent loop without limits is an unbounded spend and an unbounded runtime. Eve
 | Token budget | Bounds cost per run across all model calls |
 | Per-tool timeout | Prevents one slow tool from consuming the deadline |
 | Output truncation | Prevents a large file or search result from exhausting the context window |
-| Repeated-call detection | Identical tool name and arguments repeated consecutively is a signal to intervene rather than continue |
+| Repeated-call detection | Per-run dispatch cache: exact `(name, args)` dedupe and near-duplicate `read_file` windows return a short observation instead of re-executing |
 | Tool set restriction | A run can only call tools it was granted |
 
 When a limit is reached, the run does not fail silently and does not pretend to have finished. It terminates with a status that distinguishes "completed" from "halted by limit", and returns whatever partial understanding it has along with the reason it stopped. Limits are configuration, not literals scattered through the code.
@@ -157,6 +157,6 @@ The most important instruction concerns untrusted content. Repository files may 
 
 ## Evolution path
 
-Phase 6 delivers a single agent with read-only tools that answers questions about a repository via `POST /tasks/{task_id}/run`. Phase 11 extends it to modification, where the loop gains a natural inner cycle: investigate, modify, run tests, inspect failures, repair, and finish by returning a reviewable diff. Changes are never pushed to the user's repository automatically.
+Phase 6 delivers a single agent with read-only tools that answers questions about a repository via `POST /tasks/{task_id}/run`. Default model and iteration budget, plus live-run mitigations, are documented in [agent-optimization.md](agent-optimization.md). Phase 11 extends it to modification, where the loop gains a natural inner cycle: investigate, modify, run tests, inspect failures, repair, and finish by returning a reviewable diff. Changes are never pushed to the user's repository automatically.
 
 Multi-agent orchestration, planner/executor separation, and persistent cross-run memory are explicitly out of scope until the single-agent loop is measurably insufficient.

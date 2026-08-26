@@ -2,7 +2,7 @@
 
 ## Status
 
-Living document. Controls are designed ahead of implementation and updated when exposure changes. Implemented through Phase 5: configuration hygiene, repository URL/SSRF validation and clone limits (Phase 4), and workspace path confinement for tools (Phase 5). Prompt-injection mitigations and further controls remain scheduled in the "Introduced" column; Phase 6 adds the agent loop that consumes repository text as untrusted data.
+Living document. Controls are designed ahead of implementation and updated when exposure changes. Implemented through Phase 6: configuration hygiene; repository URL/SSRF validation and clone limits (Phase 4); workspace path confinement and tool validation (Phase 5); agent iteration/timeout/token limits and treating repository text as untrusted data in the system prompt (Phase 6). Controls still scheduled appear in the "Introduced" column (sandbox, auth, full tool-call audit, etc.).
 
 ## Central premise
 

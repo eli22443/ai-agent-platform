@@ -9,9 +9,9 @@ Instruction: Find why the authentication tests are failing and explain how to fi
 
 ## Status
 
-Phases 1–5 are complete in code. Phase 6 (OpenAI agent loop) is the active specification: [docs/phases/phase-06.md](docs/phases/phase-06.md).
+Phases 1–6 are complete in code. The MVP is live: `POST /tasks` clones, then `POST /tasks/{task_id}/run` investigates the workspace with the OpenAI Responses API and returns an engineering answer.
 
-`POST /tasks` clones into an isolated workspace. Phase 5 provides the read-only tool registry. Phase 6 adds `POST /tasks/{task_id}/run` to investigate the clone with the Responses API and return an engineering answer.
+Next: Phase 7 (persist `agent_runs` / `tool_calls`) — see [docs/roadmap.md](docs/roadmap.md). Live-run hardening notes: [docs/agent-optimization.md](docs/agent-optimization.md).
 
 ## What it does
 
@@ -38,9 +38,10 @@ The agent investigates rather than guesses: it lists directories, searches the c
 | [docs/evaluation.md](docs/evaluation.md) | Metrics, benchmark task set, grading approach |
 | [docs/decisions.md](docs/decisions.md) | Settled decisions, open items, accepted technical debt |
 | [docs/roadmap.md](docs/roadmap.md) | All 15 phases with definitions of done |
-| [docs/phases/phase-06.md](docs/phases/phase-06.md) | Active Phase 6 specification (MVP agent loop) |
+| [docs/phases/phase-06.md](docs/phases/phase-06.md) | Phase 6 specification (MVP agent loop; complete) |
+| [docs/agent-optimization.md](docs/agent-optimization.md) | Live-run lessons: prompts, models, dispatch cache, reasoning replay |
 
-Start with [docs/roadmap.md](docs/roadmap.md) or [docs/phases/phase-06.md](docs/phases/phase-06.md) for the next implementation step.
+Start with [docs/roadmap.md](docs/roadmap.md) for Phase 7 (agent run persistence).
 
 ## Technology
 
@@ -75,7 +76,7 @@ No frontend framework at any phase. Swagger UI at `/docs` is the demonstration s
 | 7 | Agent runs | | 15 | Production hardening |
 | 8 | Semantic retrieval | | | |
 
-**The MVP is complete at the end of Phase 6**, and needs no Redis, Docker, Pinecone, authentication, or agent framework.
+**The MVP (Phase 6) is complete.** It needs no Redis, Docker, Pinecone, authentication, or agent framework. Default model: `gpt-5.4-mini` (override with `OPENAI_MODEL`).
 
 ## Prerequisites
 

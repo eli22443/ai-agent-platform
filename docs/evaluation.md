@@ -2,7 +2,7 @@
 
 ## Status
 
-Design document. No benchmark has been run yet. Meaningful evaluation becomes possible at Phase 6, when the agent first produces answers, and becomes measurable at scale at Phase 7, when runs and tool calls are persisted.
+Design document. No formal benchmark suite has been run yet. Manual live runs against public repos are possible now that Phase 6 is complete; evaluation becomes measurable at scale at Phase 7, when runs and tool calls are persisted. See [agent-optimization.md](agent-optimization.md) for informal live-run findings.
 
 ## Why this exists
 

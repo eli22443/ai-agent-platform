@@ -251,10 +251,10 @@ Decide by: implementation of Phase 8.
 | In-memory task store | Phase 2 | State lost on restart; single-process only | Phase 3 (implementation landed) |
 | Validation errors omit the offending field | Phase 2 | A 422 says only "Request validation failed."; a client cannot tell which field was wrong or why | Deferred; revisit at Phase 15, or sooner if it slows development |
 | Synchronous clone on `POST /tasks` | Phase 4 | HTTP request stays open for `git clone`; timeouts feel like API failures | Phase 9 |
-| Synchronous agent execution on `POST /tasks/{id}/run` | Phase 6 | Long-held HTTP connections, no progress visibility; pairs with sync clone debt | Phase 9 |
+| Synchronous agent execution on `POST /tasks/{id}/run` | Phase 6 | Long-held HTTP connections; pairs with sync clone debt. Early commit of `running` helps DB visibility mid-run but does not free the HTTP request | Phase 9 |
 | No authentication | Phase 1 | Anyone with network access can invoke the API | Phase 12, or on public exposure |
 | Public repositories only | Phase 4 | Cannot handle private repositories | Phase 12 |
-| Single evaluation fixture | Phase 6 (when eval runs begin) | Benchmark may overfit to one repository's structure | See O6 |
+| Single evaluation fixture | Phase 6 | Benchmark may overfit to one repository's structure; informal live runs documented in [agent-optimization.md](agent-optimization.md) | See O6 |
 | `.context/` excluded from version control | Phase 1 | Reference PDFs and the fixture archive are not tracked | Not planned; they are large binaries, not source |
 
 Recording debt is only useful if it is read. Each item above names the phase that repays it, and a phase is not complete while it silently leaves new debt unrecorded here.

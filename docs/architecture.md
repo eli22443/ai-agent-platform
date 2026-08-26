@@ -93,7 +93,7 @@ Each tool has a name, a description used by the model, a JSON Schema for its inp
 
 ### Agent loop (Phase 6)
 
-Implemented directly against the OpenAI Responses API with native tool calling, deliberately framework-light. Triggered by `POST /tasks/{task_id}/run` after a successful clone (D22) — not inline on `POST /tasks`. The loop sends the instruction and tool schemas from `build_read_only_registry()`, detects tool calls, dispatches them, feeds results back, and repeats until the model produces a final answer or a safeguard limit is reached. Phase 6 persists the answer on `tasks.result`; full `agent_runs` / `tool_calls` rows arrive in Phase 7.
+Implemented directly against the OpenAI Responses API with native tool calling, deliberately framework-light. Triggered by `POST /tasks/{task_id}/run` after a successful clone (D22) — not inline on `POST /tasks`. The loop sends the instruction and tool schemas from `build_read_only_registry()`, detects tool calls, dispatches them (with a per-run dedupe cache), feeds results back, and repeats until the model produces a final answer or a safeguard limit is reached. Reasoning-model responses replay `reasoning` items with function calls. Phase 6 persists the answer on `tasks.result`; full `agent_runs` / `tool_calls` rows arrive in Phase 7. Defaults and live-run notes: [agent-optimization.md](agent-optimization.md).
 
 ### Retrieval (Phase 5 and Phase 8)
 
@@ -234,7 +234,7 @@ ai-agent-platform/
 │   ├── pyproject.toml
 │   └── uv.lock
 └── docs/
-    ├── architecture.md, agent-design.md, security.md, …
+    ├── architecture.md, agent-design.md, agent-optimization.md, security.md, …
     ├── roadmap.md, decisions.md
     └── phases/phase-01.md … phase-06.md
 ```
@@ -284,4 +284,4 @@ The last row deserves emphasis: "use AWS" means the application's own infrastruc
 9. Do not add authentication until multi-user functionality requires it.
 10. Do not build a frontend.
 11. Prefer incremental complexity. Every infrastructure component must have a concrete, current purpose.
-12. The MVP must be runnable locally with minimal external infrastructure: Python, git, ripgrep, and an OpenAI API key.
+12. The MVP is runnable locally with minimal external infrastructure: Python, git, ripgrep, PostgreSQL, and an OpenAI API key.

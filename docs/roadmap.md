@@ -4,7 +4,7 @@
 
 Fifteen phases, executed in order. Each phase produces working software, has its own tests, and ends in a single commit. A phase introduces only the components it needs; nothing is stubbed in advance because it appears in the target architecture.
 
-This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 6](phases/phase-06.md). Later phases get a `phase-NN.md` when they become active.
+This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 6](phases/phase-06.md). Phase 6 (MVP) is complete; Phase 7 is next. Later phases get a `phase-NN.md` when they become active.
 
 Rules that apply to every phase:
 
@@ -25,7 +25,7 @@ Rules that apply to every phase:
 | 4 | Repository management | Git CLI | Complete |
 | 5 | Repository context tools | ripgrep | Complete |
 | 6 | OpenAI agent loop | OpenAI API | Complete |
-| 7 | Agent runs | None | Not started |
+| 7 | Agent runs | None | Not started (next) |
 | 8 | Semantic retrieval | Pinecone | Not started |
 | 9 | Background execution | Redis | Not started |
 | 10 | Docker sandbox | Docker | Not started |
@@ -151,7 +151,7 @@ POST /tasks/{task_id}/run   → run agent, return answer + tool_calls summary
 GET  /tasks/{task_id}       → includes result/error after a run
 ```
 
-**Notes.** Agent is not inline on create (D22). Sync `/run` is debt repaid in Phase 9. Persist answer on `tasks.result`; full `agent_runs` / `tool_calls` tables wait for Phase 7.
+**Notes.** Agent is not inline on create (D22). Sync `/run` is debt repaid in Phase 9. Persist answer on `tasks.result`; full `agent_runs` / `tool_calls` tables wait for Phase 7. Post-MVP live-run hardening (dispatch cache, `read_file` pagination, reasoning-item replay, default `gpt-5.4-mini` / `AGENT_MAX_ITERATIONS=10`) is recorded in [agent-optimization.md](agent-optimization.md).
 
 **Definition of done.** The loop sends tool schemas, detects tool calls, executes them, feeds results back, and terminates on a final answer; iteration, wall-clock, and token limits are enforced and configurable, and a limit halt is reported distinctly from completion; a tool failure becomes an observation rather than crashing the run; the answer and the tool-call summary are returned through the API; unit tests mock the model entirely and no test makes a paid API call; one manual end-to-end run against a real public repository is documented.
 
