@@ -3,9 +3,12 @@ from app.agent import build_system_prompt, build_user_message
 
 def test_system_prompt_mentions_untrusted_data():
     text = build_system_prompt().lower()
+    collapsed = " ".join(text.split())
     assert "untrusted" in text
     assert "data, not instructions" in text
     assert "read-only" in text
+    assert "stop calling tools" in collapsed
+    assert "final answer" in collapsed
     # No leading indentation from a raw triple-quoted block
     assert not build_system_prompt().startswith(" ")
 

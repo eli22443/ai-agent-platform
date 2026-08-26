@@ -8,7 +8,7 @@ from dataclasses import dataclass
 class AgentLimits:
     """Immutable per-run limit configuration (from Settings)."""
 
-    max_iterations: int = 20
+    max_iterations: int = 10
     timeout_seconds: float = 180
     token_budget: int = 0  # 0 = disabled
 

@@ -211,6 +211,57 @@ def test_run_llm_error_persists_failed(
     assert record.result is None
 
 
+def test_run_commits_running_before_agent(
+    session_factory, repository_service: RepositoryService
+):
+    from app.tools.registry import build_read_only_registry
+    from tests.llm_fakes import FakeLLMClient, text_response
+
+    session = session_factory()
+    try:
+        service = TaskService(session, repository_service)
+        task = service.create(REQUESTS_URL, INSTRUCTION)
+        session.commit()
+        task_id = task.id
+
+        seen: dict[str, str | None] = {"status": None}
+
+        class SpyLLM(FakeLLMClient):
+            def create_response(self, *, model, input, tools, instructions=None):
+                other = session_factory()
+                try:
+                    record = other.get(TaskRecord, task_id)
+                    seen["status"] = None if record is None else record.status
+                finally:
+                    other.close()
+                return super().create_response(
+                    model=model,
+                    input=input,
+                    tools=tools,
+                    instructions=instructions,
+                )
+
+        result = service.run(
+            task_id,
+            SpyLLM([text_response("done")]),
+            build_read_only_registry(),
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    assert seen["status"] == TaskStatus.RUNNING.value
+    assert result.answer == "done"
+
+    session = session_factory()
+    try:
+        record = session.get(TaskRecord, task_id)
+        assert record is not None
+        assert record.status == TaskStatus.COMPLETED.value
+    finally:
+        session.close()
+
+
 def test_run_halt_persists_completed_with_prefix(
     db_session: Session, task_service: TaskService, monkeypatch: pytest.MonkeyPatch
 ):

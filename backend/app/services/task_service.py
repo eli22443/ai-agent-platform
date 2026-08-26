@@ -120,7 +120,9 @@ class TaskService:
         now = datetime.now(UTC)
         task_record.status = TaskStatus.RUNNING.value
         task_record.updated_at = now
-        self._session.flush()
+        # Commit early so other DB clients can observe running mid-flight.
+        # Final completed/failed still commits via get_db after the route returns.
+        self._session.commit()
 
         settings = get_settings()
         agent_result = run_agent(
