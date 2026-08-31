@@ -15,7 +15,7 @@ This document describes the target architecture. Every component is annotated wi
 
 ## Status
 
-Phases 1–6 are implemented in `backend/`. Phase 7 (`agent_runs` / `tool_calls` persistence) is next — see [roadmap.md](roadmap.md). Components marked Phase 7+ do not exist yet unless noted.
+Phases 1–6 are implemented in `backend/`. Phase 7 (agent run persistence) is the active specification — see [phases/phase-07.md](phases/phase-07.md). Components marked Phase 8+ do not exist yet unless noted.
 
 ## Target architecture
 
@@ -75,6 +75,8 @@ POST /tasks                  Phase 2 persist; Phase 4 adds clone (returns pendin
 GET  /tasks                  Phase 2
 GET  /tasks/{task_id}        Phase 2 (includes result/error after a run — Phase 6)
 POST /tasks/{task_id}/run    Phase 6 (sync agent; D22)
+GET  /tasks/{task_id}/runs   Phase 7 (run history)
+GET  /tasks/{task_id}/runs/{run_id}  Phase 7 (run detail + tool calls)
 ```
 
 After Phase 9, long-running work moves to a worker; clients may still poll `GET /tasks/{task_id}` (or a 202 enqueue path) rather than holding `/run` open.
@@ -236,7 +238,7 @@ ai-agent-platform/
 └── docs/
     ├── architecture.md, agent-design.md, agent-optimization.md, security.md, …
     ├── roadmap.md, decisions.md
-    └── phases/phase-01.md … phase-06.md
+    └── phases/phase-01.md … phase-07.md
 ```
 
 Target additions by later phase (do not create placeholders early):

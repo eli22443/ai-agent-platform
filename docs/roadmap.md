@@ -4,7 +4,7 @@
 
 Fifteen phases, executed in order. Each phase produces working software, has its own tests, and ends in a single commit. A phase introduces only the components it needs; nothing is stubbed in advance because it appears in the target architecture.
 
-This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 6](phases/phase-06.md). Phase 6 (MVP) is complete; Phase 7 is next. Later phases get a `phase-NN.md` when they become active.
+This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 7](phases/phase-07.md). Phase 6 (MVP) is complete; Phase 7 is the active specification. Later phases get a `phase-NN.md` when they become active.
 
 Rules that apply to every phase:
 
@@ -25,7 +25,7 @@ Rules that apply to every phase:
 | 4 | Repository management | Git CLI | Complete |
 | 5 | Repository context tools | ripgrep | Complete |
 | 6 | OpenAI agent loop | OpenAI API | Complete |
-| 7 | Agent runs | None | Not started (next) |
+| 7 | Agent runs | None | Active |
 | 8 | Semantic retrieval | Pinecone | Not started |
 | 9 | Background execution | Redis | Not started |
 | 10 | Docker sandbox | Docker | Not started |
@@ -172,6 +172,8 @@ Full specification: [phase-06.md](phases/phase-06.md).
 **Definition of done.** Every run persists model, status, iteration count, token usage, timestamps, and final result; every tool call persists name, arguments, status, duration, and error; runs that halt on a limit or fail are recorded with the same fidelity as successful ones; run history is queryable by task; no secret or credential appears in any recorded argument.
 
 **Commit.** `feat: persist agent runs and tool calls`
+
+Full specification: [phase-07.md](phases/phase-07.md).
 
 ## Phase 8 — Semantic retrieval
 
