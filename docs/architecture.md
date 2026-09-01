@@ -15,7 +15,7 @@ This document describes the target architecture. Every component is annotated wi
 
 ## Status
 
-Phases 1–7 are implemented in `backend/`. Phase 8 (semantic retrieval) is next — see [roadmap.md](roadmap.md). Components marked Phase 8+ do not exist yet unless noted.
+Phases 1–7 are implemented in `backend/`. Phase 8 (semantic retrieval) is the active specification — see [phases/phase-08.md](phases/phase-08.md). Components marked Phase 9+ do not exist yet unless noted.
 
 ## Target architecture
 
@@ -238,7 +238,7 @@ ai-agent-platform/
 └── docs/
     ├── architecture.md, agent-design.md, agent-optimization.md, security.md, …
     ├── roadmap.md, decisions.md
-    └── phases/phase-01.md … phase-07.md
+    └── phases/phase-01.md … phase-08.md
 ```
 
 Target additions by later phase (do not create placeholders early):

@@ -9,9 +9,9 @@ Instruction: Find why the authentication tests are failing and explain how to fi
 
 ## Status
 
-Phases 1–6 are complete in code. The MVP is live: `POST /tasks` clones, then `POST /tasks/{task_id}/run` investigates the workspace with the OpenAI Responses API and returns an engineering answer.
+Phases 1–7 are complete in code. The MVP agent loop is live; runs and tool calls persist in PostgreSQL.
 
-Next: Phase 7 (persist `agent_runs` / `tool_calls`) — see [docs/phases/phase-07.md](docs/phases/phase-07.md). Live-run hardening notes: [docs/agent-optimization.md](docs/agent-optimization.md).
+Next: Phase 8 (semantic retrieval with Pinecone) — see [docs/phases/phase-08.md](docs/phases/phase-08.md). Live-run notes: [docs/agent-optimization.md](docs/agent-optimization.md).
 
 ## What it does
 
@@ -38,10 +38,10 @@ The agent investigates rather than guesses: it lists directories, searches the c
 | [docs/evaluation.md](docs/evaluation.md) | Metrics, benchmark task set, grading approach |
 | [docs/decisions.md](docs/decisions.md) | Settled decisions, open items, accepted technical debt |
 | [docs/roadmap.md](docs/roadmap.md) | All 15 phases with definitions of done |
-| [docs/phases/phase-07.md](docs/phases/phase-07.md) | Active Phase 7 specification (agent run persistence) |
+| [docs/phases/phase-08.md](docs/phases/phase-08.md) | Active Phase 8 specification (semantic retrieval) |
 | [docs/agent-optimization.md](docs/agent-optimization.md) | Live-run lessons: prompts, models, dispatch cache, reasoning replay |
 
-Start with [docs/phases/phase-07.md](docs/phases/phase-07.md) for the next implementation step.
+Start with [docs/phases/phase-08.md](docs/phases/phase-08.md) for the next implementation step.
 
 ## Technology
 
