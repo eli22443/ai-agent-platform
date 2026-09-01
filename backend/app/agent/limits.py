@@ -19,15 +19,30 @@ class LimitTracker:
     def __init__(self, limits: AgentLimits) -> None:
         self._limits = limits
         self.iterations = 0
-        self.tokens_used = 0
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.total_tokens = 0
         self._started_at = time.monotonic()
 
     def record_iteration(self) -> None:
         self.iterations += 1
 
-    def add_tokens(self, n: int | None) -> None:
+    def add_tokens(
+        self,
+        n: int | None = None,
+        *,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+    ) -> None:
+        """Accumulate usage. ``n`` is total tokens when the API reports it."""
+        if input_tokens:
+            self.prompt_tokens += input_tokens
+        if output_tokens:
+            self.completion_tokens += output_tokens
+        if n is None and (input_tokens is not None or output_tokens is not None):
+            n = (input_tokens or 0) + (output_tokens or 0)
         if n:
-            self.tokens_used += n
+            self.total_tokens += n
 
     def check(self) -> str | None:
         """Return a halt reason, or None if the run may continue."""
@@ -36,6 +51,6 @@ class LimitTracker:
         if time.monotonic() - self._started_at >= self._limits.timeout_seconds:
             return "timeout"
         budget = self._limits.token_budget
-        if budget > 0 and self.tokens_used >= budget:
+        if budget > 0 and self.total_tokens >= budget:
             return "token_budget"
         return None

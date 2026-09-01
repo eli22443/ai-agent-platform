@@ -42,3 +42,4 @@ class TaskRunResponse(BaseModel):
     iterations: int
     tool_calls: list[ToolCallSummaryResponse]
     error: str | None
+    run_id: UUID | None = None

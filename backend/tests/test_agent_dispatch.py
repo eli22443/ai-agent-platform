@@ -57,6 +57,8 @@ def test_dispatch_valid_list_files(tmp_path: Path) -> None:
     assert payload["ok"] is True
     assert result.summaries[0].name == "list_files"
     assert result.summaries[0].ok is True
+    assert result.summaries[0].error is None
+    assert result.summaries[0].deduplicated is False
     assert result.summaries[0].duration_ms >= 0
 
 
@@ -75,6 +77,7 @@ def test_dispatch_invalid_json_returns_error_output(tmp_path: Path) -> None:
     assert payload["ok"] is False
     assert "invalid tool arguments JSON" in payload["error"]
     assert result.summaries[0].ok is False
+    assert result.summaries[0].error is not None
 
 
 def test_dispatch_unknown_tool_returns_error(tmp_path: Path) -> None:
@@ -138,6 +141,8 @@ def test_dispatch_dedupes_exact_repeat(tmp_path: Path) -> None:
     assert second_payload["ok"] is True
     assert second_payload["data"]["deduplicated"] is True
     assert "already ran" in second_payload["data"]["message"]
+    assert first.summaries[0].deduplicated is False
+    assert second.summaries[0].deduplicated is True
 
 
 def test_dispatch_dedupes_near_duplicate_read_window(tmp_path: Path) -> None:

@@ -5,6 +5,7 @@ from app.config import get_settings
 from app.database.session import get_db
 from app.repositories.git_client import SubprocessGitClient
 from app.repositories.service import RepositoryService
+from app.services.agent_run_service import AgentRunService
 from app.services.task_service import TaskService
 
 from app.agent.limits import AgentLimits
@@ -27,11 +28,16 @@ def get_repository_service() -> RepositoryService:
     )
 
 
+def get_agent_run_service(db: Session = Depends(get_db)) -> AgentRunService:
+    return AgentRunService(db)
+
+
 def get_task_service(
     db: Session = Depends(get_db),
     repository_service: RepositoryService = Depends(get_repository_service),
+    agent_run_service: AgentRunService = Depends(get_agent_run_service),
 ) -> TaskService:
-    return TaskService(db, repository_service)
+    return TaskService(db, repository_service, agent_run_service)
 
 
 def get_llm_client() -> OpenAILLMClient:

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import get_settings
 from app.database.models import RepositoryRecord, TaskRecord
 from app.main import create_app
+from app.services.agent_run_service import AgentRunService
 from app.services.task_service import TaskService
 
 REQUESTS_URL = "https://github.com/psf/requests"
@@ -16,12 +17,16 @@ INSTRUCTION = "Explain how the retry logic works."
 OTHER_INSTRUCTION = "Summarize the transport layer design."
 
 
+def _task_service(session: Session, repository_service) -> TaskService:
+    return TaskService(session, repository_service, AgentRunService(session))
+
+
 def test_create_task_persists_across_sessions(
     session_factory: sessionmaker, repository_service
 ):
     session = session_factory()
     try:
-        task = TaskService(session, repository_service).create(
+        task = _task_service(session, repository_service).create(
             REQUESTS_URL, INSTRUCTION
         )
         session.commit()
@@ -31,7 +36,7 @@ def test_create_task_persists_across_sessions(
 
     session = session_factory()
     try:
-        found = TaskService(session, repository_service).get(task_id)
+        found = _task_service(session, repository_service).get(task_id)
         assert found is not None
         assert found.id == task_id
         assert found.repository_url == REQUESTS_URL
@@ -43,7 +48,7 @@ def test_create_task_persists_across_sessions(
 def test_create_reuses_repository_row_for_same_url(
     db_session: Session, repository_service
 ):
-    service = TaskService(db_session, repository_service)
+    service = _task_service(db_session, repository_service)
     service.create(REQUESTS_URL, INSTRUCTION)
     service.create(REQUESTS_URL, OTHER_INSTRUCTION)
 
@@ -58,7 +63,7 @@ def test_create_reuses_repository_row_for_same_url(
 def test_create_separate_urls_create_separate_repositories(
     db_session: Session, repository_service
 ):
-    service = TaskService(db_session, repository_service)
+    service = _task_service(db_session, repository_service)
     service.create(REQUESTS_URL, INSTRUCTION)
     service.create(HTTPX_URL, OTHER_INSTRUCTION)
 
@@ -69,7 +74,7 @@ def test_create_separate_urls_create_separate_repositories(
 def test_task_row_has_foreign_key_to_repository(
     db_session: Session, repository_service
 ):
-    task = TaskService(db_session, repository_service).create(
+    task = _task_service(db_session, repository_service).create(
         REQUESTS_URL, INSTRUCTION
     )
 
@@ -88,7 +93,7 @@ def test_get_unknown_task_returns_none_from_new_session(
 ):
     session = session_factory()
     try:
-        result = TaskService(session, repository_service).get(
+        result = _task_service(session, repository_service).get(
             UUID("00000000-0000-0000-0000-000000000000")
         )
         assert result is None
@@ -131,4 +136,4 @@ def test_migration_creates_expected_tables(engine: Engine):
         ).all()
 
     names = {row[0] for row in rows}
-    assert {"repositories", "tasks", "agent_runs"}.issubset(names)
+    assert {"repositories", "tasks", "agent_runs", "tool_calls"}.issubset(names)

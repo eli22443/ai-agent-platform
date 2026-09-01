@@ -68,12 +68,17 @@ def dispatch_tool_calls(
         )
         duration_ms = max(0, int((time.perf_counter() - start) * 1000))
 
+        deduplicated = bool(
+            isinstance(result.data, dict) and result.data.get("deduplicated")
+        )
         summaries.append(
             ToolCallSummary(
                 name=name,
                 args=raw_args,
                 ok=result.ok,
                 duration_ms=duration_ms,
+                error=result.error if not result.ok else None,
+                deduplicated=deduplicated,
             )
         )
         output_items.append(

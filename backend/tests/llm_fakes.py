@@ -28,7 +28,7 @@ def text_response(text: str) -> SimpleNamespace:
     return SimpleNamespace(
         output=[],
         output_text=text,
-        usage=SimpleNamespace(total_tokens=10),
+        usage=SimpleNamespace(total_tokens=10, input_tokens=6, output_tokens=4),
     )
 
 
@@ -61,5 +61,5 @@ def tool_call_response(
     return SimpleNamespace(
         output=output,
         output_text="",
-        usage=SimpleNamespace(total_tokens=20),
+        usage=SimpleNamespace(total_tokens=20, input_tokens=12, output_tokens=8),
     )

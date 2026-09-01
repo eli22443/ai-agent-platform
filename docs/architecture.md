@@ -15,7 +15,7 @@ This document describes the target architecture. Every component is annotated wi
 
 ## Status
 
-Phases 1–6 are implemented in `backend/`. Phase 7 (agent run persistence) is the active specification — see [phases/phase-07.md](phases/phase-07.md). Components marked Phase 8+ do not exist yet unless noted.
+Phases 1–7 are implemented in `backend/`. Phase 8 (semantic retrieval) is next — see [roadmap.md](roadmap.md). Components marked Phase 8+ do not exist yet unless noted.
 
 ## Target architecture
 

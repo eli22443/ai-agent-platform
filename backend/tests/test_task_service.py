@@ -12,6 +12,7 @@ from app.repositories.errors import CloneError, InvalidRepositoryUrl
 from app.repositories.service import RepositoryService
 from app.schemas.task import TaskStatus
 from app.services import task_service as task_service_module
+from app.services.agent_run_service import AgentRunService
 from app.services.task_service import TaskService
 from tests.conftest import ALLOWED_HOSTS, FakeGitClient, public_getaddrinfo
 
@@ -22,8 +23,9 @@ INSTRUCTION = "Explain how the retry logic works."
 
 @pytest.fixture
 def task_service(db_session: Session, repository_service: RepositoryService):
-    return TaskService(db_session, repository_service)
-
+    return TaskService(
+        db_session, repository_service, AgentRunService(db_session)
+    )
 
 def test_service_create_assigns_pending_status(task_service: TaskService):
     task = task_service.create(REQUESTS_URL, INSTRUCTION)
@@ -89,7 +91,9 @@ def test_clone_error_marks_task_failed(
         timeout=30,
         max_size_mb=200,
     )
-    service = TaskService(db_session, repository_service)
+    service = TaskService(
+        db_session, repository_service, AgentRunService(db_session)
+    )
 
     with pytest.raises(CloneError):
         service.create(REQUESTS_URL, INSTRUCTION)
@@ -214,24 +218,31 @@ def test_run_llm_error_persists_failed(
 def test_run_commits_running_before_agent(
     session_factory, repository_service: RepositoryService
 ):
+    from app.database.models import AgentRunRecord
     from app.tools.registry import build_read_only_registry
     from tests.llm_fakes import FakeLLMClient, text_response
 
     session = session_factory()
     try:
-        service = TaskService(session, repository_service)
+        service = TaskService(
+            session, repository_service, AgentRunService(session)
+        )
         task = service.create(REQUESTS_URL, INSTRUCTION)
         session.commit()
         task_id = task.id
 
-        seen: dict[str, str | None] = {"status": None}
+        seen: dict[str, str | None] = {"task_status": None, "run_status": None}
 
         class SpyLLM(FakeLLMClient):
             def create_response(self, *, model, input, tools, instructions=None):
                 other = session_factory()
                 try:
                     record = other.get(TaskRecord, task_id)
-                    seen["status"] = None if record is None else record.status
+                    seen["task_status"] = None if record is None else record.status
+                    run = other.scalars(
+                        select(AgentRunRecord).where(AgentRunRecord.task_id == task_id)
+                    ).first()
+                    seen["run_status"] = None if run is None else run.status
                 finally:
                     other.close()
                 return super().create_response(
@@ -250,14 +261,19 @@ def test_run_commits_running_before_agent(
     finally:
         session.close()
 
-    assert seen["status"] == TaskStatus.RUNNING.value
+    assert seen["task_status"] == TaskStatus.RUNNING.value
+    assert seen["run_status"] == "running"
     assert result.answer == "done"
+    assert result.run_id is not None
 
     session = session_factory()
     try:
         record = session.get(TaskRecord, task_id)
         assert record is not None
         assert record.status == TaskStatus.COMPLETED.value
+        run = session.get(AgentRunRecord, result.run_id)
+        assert run is not None
+        assert run.status == "completed"
     finally:
         session.close()
 
@@ -271,20 +287,20 @@ def test_run_halt_persists_completed_with_prefix(
 
     monkeypatch.setenv("AGENT_MAX_ITERATIONS", "1")
     get_settings.cache_clear()
+    try:
+        task = task_service.create(REQUESTS_URL, INSTRUCTION)
+        result = task_service.run(
+            task.id,
+            FakeLLMClient([tool_call_response()]),
+            build_read_only_registry(),
+        )
 
-    task = task_service.create(REQUESTS_URL, INSTRUCTION)
-    result = task_service.run(
-        task.id,
-        FakeLLMClient([tool_call_response()]),
-        build_read_only_registry(),
-    )
-
-    assert result.halt_reason == "max_iterations"
-    record = db_session.get(TaskRecord, task.id)
-    assert record is not None
-    assert record.status == TaskStatus.COMPLETED.value
-    assert record.result is not None
-    assert record.result.startswith("[halted: max_iterations]")
-    assert record.error is None
-
-    get_settings.cache_clear()
+        assert result.halt_reason == "max_iterations"
+        record = db_session.get(TaskRecord, task.id)
+        assert record is not None
+        assert record.status == TaskStatus.COMPLETED.value
+        assert record.result is not None
+        assert record.result.startswith("[halted: max_iterations]")
+        assert record.error is None
+    finally:
+        get_settings.cache_clear()

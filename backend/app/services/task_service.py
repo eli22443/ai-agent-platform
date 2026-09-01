@@ -15,6 +15,7 @@ from app.repositories.errors import CloneError
 from app.repositories.service import RepositoryService
 from app.repositories.workspace import remove as remove_workspace
 from app.schemas.task import TaskStatus
+from app.services.agent_run_service import AgentRunService
 from app.services.errors import TaskNotFound, TaskNotRunnable
 from app.tools.base import ToolContext
 from app.tools.registry import ToolRegistry
@@ -32,9 +33,15 @@ class Task:
 
 
 class TaskService:
-    def __init__(self, session: Session, repository_service: RepositoryService) -> None:
+    def __init__(
+        self,
+        session: Session,
+        repository_service: RepositoryService,
+        agent_run_service: AgentRunService,
+    ) -> None:
         self._session = session
         self._repository_service = repository_service
+        self._agent_run_service = agent_run_service
 
     def create(self, repository_url: str, instruction: str) -> Task:
         self._repository_service.validate_url(repository_url)
@@ -109,22 +116,21 @@ class TaskService:
         task_record, repository_record = row
 
         if task_record.status != TaskStatus.PENDING.value:
-            raise TaskNotRunnable(
-                f"task is not runnable (status={task_record.status})"
-            )
+            raise TaskNotRunnable(f"task is not runnable (status={task_record.status})")
 
         workspace_root = self._repository_service.workspace_path_for(task_id)
         if not workspace_root.is_dir():
             raise TaskNotRunnable("workspace missing or incomplete")
 
+        settings = get_settings()
         now = datetime.now(UTC)
         task_record.status = TaskStatus.RUNNING.value
         task_record.updated_at = now
+        run_record = self._agent_run_service.begin(task_id, model=settings.openai_model)
         # Commit early so other DB clients can observe running mid-flight.
         # Final completed/failed still commits via get_db after the route returns.
         self._session.commit()
 
-        settings = get_settings()
         agent_result = run_agent(
             instruction=task_record.instruction,
             context=ToolContext(workspace_root=workspace_root.resolve()),
@@ -156,7 +162,9 @@ class TaskService:
             task_record.error = None
 
         task_record.updated_at = now
+        self._agent_run_service.finish(run_record, agent_result)
         self._session.flush()
+        agent_result.run_id = run_record.id
         return agent_result
 
 

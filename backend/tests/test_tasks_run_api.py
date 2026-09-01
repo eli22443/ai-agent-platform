@@ -39,6 +39,7 @@ def test_run_returns_200_with_answer(client):
         assert body["error"] is None
         assert body["iterations"] == 1
         assert body["tool_calls"] == []
+        assert body["run_id"] is not None
         assert fake.calls == 1
 
         got = client.get(f"/tasks/{task_id}")
@@ -46,6 +47,12 @@ def test_run_returns_200_with_answer(client):
         assert got.json()["status"] == "completed"
         assert got.json()["result"] == "Session manages cookies and headers."
         assert got.json()["error"] is None
+
+        runs = client.get(f"/tasks/{task_id}/runs")
+        assert runs.status_code == 200
+        assert len(runs.json()) == 1
+        assert runs.json()[0]["run_id"] == body["run_id"]
+        assert runs.json()[0]["tool_call_count"] == 0
     finally:
         _clear_llm_override(client)
 
@@ -71,6 +78,18 @@ def test_run_with_tool_call_then_answer(client):
         assert body["tool_calls"][0]["name"] == "list_files"
         assert body["tool_calls"][0]["ok"] is True
         assert body["tool_calls"][0]["duration_ms"] >= 0
+        assert body["run_id"] is not None
+
+        runs = client.get(f"/tasks/{task_id}/runs")
+        assert runs.status_code == 200
+        assert runs.json()[0]["tool_call_count"] == len(body["tool_calls"])
+
+        detail = client.get(f"/tasks/{task_id}/runs/{body['run_id']}")
+        assert detail.status_code == 200
+        assert detail.json()["status"] == "completed"
+        assert len(detail.json()["tool_calls"]) == 1
+        assert detail.json()["tool_calls"][0]["sequence"] == 1
+        assert detail.json()["tool_calls"][0]["name"] == "list_files"
     finally:
         _clear_llm_override(client)
 
@@ -147,3 +166,5 @@ def test_openapi_includes_run_path(client):
     assert response.status_code == 200
     paths = response.json()["paths"]
     assert "/tasks/{task_id}/run" in paths
+    assert "/tasks/{task_id}/runs" in paths
+    assert "/tasks/{task_id}/runs/{run_id}" in paths

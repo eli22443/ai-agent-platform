@@ -45,5 +45,16 @@ def test_add_tokens_ignores_none_and_zero():
     )
     tracker.add_tokens(None)
     tracker.add_tokens(0)
-    assert tracker.tokens_used == 0
+    assert tracker.total_tokens == 0
     assert tracker.check() is None
+
+
+def test_add_tokens_accumulates_input_and_output():
+    tracker = LimitTracker(
+        AgentLimits(max_iterations=20, timeout_seconds=60, token_budget=0)
+    )
+    tracker.add_tokens(10, input_tokens=6, output_tokens=4)
+    tracker.add_tokens(5, input_tokens=3, output_tokens=2)
+    assert tracker.prompt_tokens == 9
+    assert tracker.completion_tokens == 6
+    assert tracker.total_tokens == 15

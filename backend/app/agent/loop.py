@@ -78,18 +78,23 @@ def run_agent(
                 tools=tools,
             )
         except LLMError as exc:
-            return AgentResult(
+            return _agent_result(
                 answer=partial,
                 completed=False,
                 halt_reason=None,
-                iterations=tracker.iterations,
-                tool_calls=summaries,
+                tracker=tracker,
+                summaries=summaries,
                 error=str(exc),
             )
 
         tracker.record_iteration()
-        if response.usage is not None:
-            tracker.add_tokens(getattr(response.usage, "total_tokens", None))
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            tracker.add_tokens(
+                getattr(usage, "total_tokens", None),
+                input_tokens=getattr(usage, "input_tokens", None),
+                output_tokens=getattr(usage, "output_tokens", None),
+            )
 
         text = _output_text(response)
         if text:
@@ -97,12 +102,12 @@ def run_agent(
 
         tool_calls = extract_function_calls(response.output)
         if not tool_calls:
-            return AgentResult(
+            return _agent_result(
                 answer=partial,
                 completed=True,
                 halt_reason=None,
-                iterations=tracker.iterations,
-                tool_calls=summaries,
+                tracker=tracker,
+                summaries=summaries,
                 error=None,
             )
 
@@ -129,13 +134,35 @@ def _halt(
     tracker: LimitTracker,
     summaries: list[ToolCallSummary],
 ) -> AgentResult:
-    return AgentResult(
+    return _agent_result(
         answer=partial or f"Stopped: {reason}",
         completed=False,
         halt_reason=reason,
+        tracker=tracker,
+        summaries=summaries,
+        error=None,
+    )
+
+
+def _agent_result(
+    *,
+    answer: str,
+    completed: bool,
+    halt_reason: str | None,
+    tracker: LimitTracker,
+    summaries: list[ToolCallSummary],
+    error: str | None,
+) -> AgentResult:
+    return AgentResult(
+        answer=answer,
+        completed=completed,
+        halt_reason=halt_reason,
         iterations=tracker.iterations,
         tool_calls=summaries,
-        error=None,
+        error=error,
+        prompt_tokens=tracker.prompt_tokens,
+        completion_tokens=tracker.completion_tokens,
+        total_tokens=tracker.total_tokens,
     )
 
 

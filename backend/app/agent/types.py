@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from uuid import UUID
 
 
 @dataclass
@@ -7,6 +8,8 @@ class ToolCallSummary:
     args: str
     ok: bool
     duration_ms: int
+    error: str | None = None
+    deduplicated: bool = False
 
 
 @dataclass
@@ -19,3 +22,7 @@ class AgentResult:
     error: (
         str | None
     )  # infra failure message; mutually exclusive with a clean answer path
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    run_id: UUID | None = None

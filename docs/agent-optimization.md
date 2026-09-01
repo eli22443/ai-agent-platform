@@ -109,7 +109,7 @@ Tighter instructions finish faster; broad “architecture overview” invites it
 - Live spend: [OpenAI Usage dashboard](https://platform.openai.com) → Usage (filter by model / export CSV). Help: [export usage/cost](https://help.openai.com/en/articles/20001072-how-do-i-export-monthly-usage-details-from-the-api-usage-dashboard).
 - List prices: [Pricing](https://developers.openai.com/api/docs/pricing), e.g. [gpt-5.4-mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
 - Programmatic: [Usage & Cost API cookbook](https://developers.openai.com/cookbook/examples/completions_usage_api).
-- App does not yet persist per-run cost; Responses `usage` belongs on Phase 7 `agent_runs`.
+- App persists per-run token usage on `agent_runs` (Phase 7); currency cost estimation can layer on those columns.
 
 Rough cost: mostly **input** tokens (history + tool outputs × turns). Fewer iterations usually beats a slightly cheaper model that wanders.
 
@@ -128,7 +128,6 @@ Rough cost: mostly **input** tokens (history + tool outputs × turns). Fewer ite
 
 ## Follow-ups (optional)
 
-- Expose `deduplicated` on `ToolCallSummary` / run API so curl summaries show guardrail hits
 - Exclude `.workspaces` from uvicorn WatchFiles
-- Persist token usage / estimated cost per run (Phase 7)
+- Estimated currency cost from stored token columns (rates × `agent_runs` usage)
 - Consider `previous_response_id` or history truncation when conversations get huge

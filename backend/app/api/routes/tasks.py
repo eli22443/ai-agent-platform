@@ -1,11 +1,23 @@
+import json
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.agent.types import AgentResult
-from app.api.dependencies import get_llm_client, get_task_service, get_tool_registry
+from app.api.dependencies import (
+    get_agent_run_service,
+    get_llm_client,
+    get_task_service,
+    get_tool_registry,
+)
+from app.database.models import AgentRunRecord, ToolCallRecord
 from app.llm.client import OpenAILLMClient
 from app.repositories.errors import CloneError, InvalidRepositoryUrl
+from app.schemas.agent_run import (
+    AgentRunDetailResponse,
+    AgentRunSummaryResponse,
+    AgentRunToolCallResponse,
+)
 from app.schemas.task import (
     TaskCreateRequest,
     TaskResponse,
@@ -13,6 +25,7 @@ from app.schemas.task import (
     TaskStatus,
     ToolCallSummaryResponse,
 )
+from app.services.agent_run_service import AgentRunService
 from app.services.errors import TaskNotFound, TaskNotRunnable
 from app.services.task_service import Task, TaskService
 from app.tools.registry import ToolRegistry
@@ -48,6 +61,38 @@ def run_task(
         raise HTTPException(status_code=409, detail=exc.message)
 
     return _to_task_run_response(task_id, agent_result)
+
+
+@router.get("/tasks/{task_id}/runs", response_model=list[AgentRunSummaryResponse])
+def list_task_runs(
+    task_id: UUID,
+    task_service: TaskService = Depends(get_task_service),
+    agent_run_service: AgentRunService = Depends(get_agent_run_service),
+) -> list[AgentRunSummaryResponse]:
+    if task_service.get(task_id) is None:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    runs = agent_run_service.list_for_task(task_id)
+    return [
+        _to_run_summary(run, agent_run_service.tool_call_count(run.id)) for run in runs
+    ]
+
+
+@router.get(
+    "/tasks/{task_id}/runs/{run_id}",
+    response_model=AgentRunDetailResponse,
+)
+def get_task_run(
+    task_id: UUID,
+    run_id: UUID,
+    task_service: TaskService = Depends(get_task_service),
+    agent_run_service: AgentRunService = Depends(get_agent_run_service),
+) -> AgentRunDetailResponse:
+    if task_service.get(task_id) is None:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    run = agent_run_service.get_for_task(task_id, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    return _to_run_detail(run)
 
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse)
@@ -98,4 +143,53 @@ def _to_task_run_response(task_id: UUID, agent_result: AgentResult) -> TaskRunRe
             for call in agent_result.tool_calls
         ],
         error=agent_result.error,
+        run_id=agent_result.run_id,
+    )
+
+
+def _to_run_summary(run: AgentRunRecord, tool_call_count: int) -> AgentRunSummaryResponse:
+    return AgentRunSummaryResponse(
+        run_id=run.id,
+        status=run.status,
+        model=run.model,
+        iterations=run.iterations,
+        halt_reason=run.halt_reason,
+        prompt_tokens=run.prompt_tokens,
+        completion_tokens=run.completion_tokens,
+        total_tokens=run.total_tokens,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        tool_call_count=tool_call_count,
+    )
+
+
+def _to_run_detail(run: AgentRunRecord) -> AgentRunDetailResponse:
+    tool_calls = list(run.tool_calls)
+    return AgentRunDetailResponse(
+        run_id=run.id,
+        status=run.status,
+        model=run.model,
+        iterations=run.iterations,
+        halt_reason=run.halt_reason,
+        prompt_tokens=run.prompt_tokens,
+        completion_tokens=run.completion_tokens,
+        total_tokens=run.total_tokens,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        tool_call_count=len(tool_calls),
+        result=run.result,
+        error=run.error,
+        tool_calls=[_to_tool_call_response(call) for call in tool_calls],
+    )
+
+
+def _to_tool_call_response(call: ToolCallRecord) -> AgentRunToolCallResponse:
+    return AgentRunToolCallResponse(
+        sequence=call.sequence,
+        name=call.tool_name,
+        args=json.dumps(call.arguments, ensure_ascii=False, default=str),
+        ok=call.ok,
+        duration_ms=call.duration_ms,
+        error=call.error,
+        deduplicated=call.deduplicated,
     )

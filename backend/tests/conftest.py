@@ -95,7 +95,10 @@ def init_git_repo(root: Path) -> Path:
 def _truncate(engine: Engine) -> None:
     with engine.connect() as connection:
         connection.execute(
-            text("TRUNCATE agent_runs, tasks, repositories RESTART IDENTITY CASCADE")
+            text(
+                "TRUNCATE tool_calls, agent_runs, tasks, repositories "
+                "RESTART IDENTITY CASCADE"
+            )
         )
         connection.commit()
 
