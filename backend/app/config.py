@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     agent_max_output_tokens: int = 8192
     agent_token_budget: int = 0
 
+    # Phase 8 — semantic retrieval
+    openai_embedding_model: str = "text-embedding-3-small"
+    pinecone_api_key: str = ""
+    pinecone_index: str = ""
+    retrieval_chunk_lines: int = 80
+    retrieval_chunk_overlap: int = 20
+    retrieval_max_file_bytes: int = 256_000
+    retrieval_embed_batch_size: int = 64
+    retrieval_search_top_k: int = 10
+    retrieval_index_enabled: bool = True
+
     @field_validator("git_allowed_hosts", mode="before")
     @classmethod
     def parse_git_allowed_hosts(cls, value: object) -> object:

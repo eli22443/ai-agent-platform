@@ -31,6 +31,15 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("AGENT_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("AGENT_MAX_OUTPUT_TOKENS", raising=False)
     monkeypatch.delenv("AGENT_TOKEN_BUDGET", raising=False)
+    monkeypatch.delenv("OPENAI_EMBEDDING_MODEL", raising=False)
+    monkeypatch.delenv("PINECONE_API_KEY", raising=False)
+    monkeypatch.delenv("PINECONE_INDEX", raising=False)
+    monkeypatch.delenv("RETRIEVAL_CHUNK_LINES", raising=False)
+    monkeypatch.delenv("RETRIEVAL_CHUNK_OVERLAP", raising=False)
+    monkeypatch.delenv("RETRIEVAL_MAX_FILE_BYTES", raising=False)
+    monkeypatch.delenv("RETRIEVAL_EMBED_BATCH_SIZE", raising=False)
+    monkeypatch.delenv("RETRIEVAL_SEARCH_TOP_K", raising=False)
+    monkeypatch.delenv("RETRIEVAL_INDEX_ENABLED", raising=False)
 
     settings = Settings(database_url=TEST_DATABASE_URL, _env_file=None)  # type: ignore[call-arg]
 
@@ -55,6 +64,15 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch):
     assert settings.agent_timeout_seconds == 180
     assert settings.agent_max_output_tokens == 8192
     assert settings.agent_token_budget == 0
+    assert settings.openai_embedding_model == "text-embedding-3-small"
+    assert settings.pinecone_api_key == ""
+    assert settings.pinecone_index == ""
+    assert settings.retrieval_chunk_lines == 80
+    assert settings.retrieval_chunk_overlap == 20
+    assert settings.retrieval_max_file_bytes == 256_000
+    assert settings.retrieval_embed_batch_size == 64
+    assert settings.retrieval_search_top_k == 10
+    assert settings.retrieval_index_enabled is True
 
 
 def test_settings_from_environment(monkeypatch: pytest.MonkeyPatch):
@@ -77,6 +95,15 @@ def test_settings_from_environment(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("AGENT_TIMEOUT_SECONDS", "60")
     monkeypatch.setenv("AGENT_MAX_OUTPUT_TOKENS", "2048")
     monkeypatch.setenv("AGENT_TOKEN_BUDGET", "10000")
+    monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
+    monkeypatch.setenv("PINECONE_API_KEY", "pc-test")
+    monkeypatch.setenv("PINECONE_INDEX", "code-index")
+    monkeypatch.setenv("RETRIEVAL_CHUNK_LINES", "40")
+    monkeypatch.setenv("RETRIEVAL_CHUNK_OVERLAP", "10")
+    monkeypatch.setenv("RETRIEVAL_MAX_FILE_BYTES", "128000")
+    monkeypatch.setenv("RETRIEVAL_EMBED_BATCH_SIZE", "32")
+    monkeypatch.setenv("RETRIEVAL_SEARCH_TOP_K", "5")
+    monkeypatch.setenv("RETRIEVAL_INDEX_ENABLED", "false")
 
     settings = Settings(database_url=TEST_DATABASE_URL, _env_file=None)  # type: ignore[call-arg]
 
@@ -99,6 +126,15 @@ def test_settings_from_environment(monkeypatch: pytest.MonkeyPatch):
     assert settings.agent_timeout_seconds == 60
     assert settings.agent_max_output_tokens == 2048
     assert settings.agent_token_budget == 10000
+    assert settings.openai_embedding_model == "text-embedding-3-large"
+    assert settings.pinecone_api_key == "pc-test"
+    assert settings.pinecone_index == "code-index"
+    assert settings.retrieval_chunk_lines == 40
+    assert settings.retrieval_chunk_overlap == 10
+    assert settings.retrieval_max_file_bytes == 128000
+    assert settings.retrieval_embed_batch_size == 32
+    assert settings.retrieval_search_top_k == 5
+    assert settings.retrieval_index_enabled is False
 
 
 def test_settings_rejects_invalid_env(monkeypatch: pytest.MonkeyPatch):
