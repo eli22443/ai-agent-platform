@@ -132,6 +132,23 @@ Introduced: Phase 12.
 
 For Phase 14 on AWS: no long-lived credentials in the application, using task roles instead; GitHub Actions authenticating through OIDC rather than stored access keys; secrets from Secrets Manager or Parameter Store injected at runtime; containers running as a non-root user; the database reachable only from the application security group; and CloudWatch retaining logs with redaction applied at the source.
 
+Phase 14 is split into **14a** (minimal deploy, deploy track) and **14b** (full hardening). See [roadmap.md](roadmap.md) and [deploy-track.md](deploy-track.md).
+
+## First cloud deploy posture
+
+Applies to the deploy track after Phase 9 (D23). Phase 12 authentication does not exist yet; network restriction is the primary control.
+
+| Control | Requirement |
+| --- | --- |
+| ALB exposure | Restrict access — VPN, IP allow-list, or private ALB with bastion. Do not expose an unauthenticated agent API to the public internet (`0.0.0.0/0`). |
+| Supabase | Connect over TLS (`?sslmode=require` on `DATABASE_URL`). Credentials only in Secrets Manager, never in images or git. |
+| Worker service | No inbound security group rules; outbound only to Redis, Supabase, OpenAI, Pinecone, and GitHub. |
+| Secrets parity | Worker receives the same secret set as API (database, LLM, Pinecone, Redis). |
+| Audit | Phase 7 `agent_runs` / `tool_calls` rows remain the post-hoc inspection surface. |
+| Verification | Complete the checklist in [deploy-track.md](deploy-track.md#verification-checklist) before considering 14a done. |
+
+Until Phase 12, treat the deployment as a **private demonstration environment**, not a multi-tenant product.
+
 ## Known accepted risks
 
 | Risk | Rationale | Revisit |

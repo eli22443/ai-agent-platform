@@ -4,7 +4,7 @@
 
 Fifteen phases, executed in order. Each phase produces working software, has its own tests, and ends in a single commit. A phase introduces only the components it needs; nothing is stubbed in advance because it appears in the target architecture.
 
-This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 7](phases/phase-07.md). Phase 7 is complete; Phase 8 is next when activated. Later phases get a `phase-NN.md` when they become active.
+This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 8](phases/phase-08.md) and [Phase 9](phases/phase-09.md). Phase 7 is complete; Phase 8 is the active implementation spec. The [deploy track](deploy-track.md) documents AWS deployment after Phase 9 (D23).
 
 Rules that apply to every phase:
 
@@ -36,6 +36,26 @@ Rules that apply to every phase:
 | 15 | Production hardening | None | Not started |
 
 **The MVP boundary is the end of Phase 6.** At that point a user can POST a repository URL and an instruction and receive a real engineering answer produced by an agent that investigated the repository through tools. Phases 1 through 6 require no Redis, no Docker, no Pinecone, no authentication, and no agent framework. Everything after Phase 6 adds capability, scale, or production readiness to a system that already works.
+
+## Deploy track (after Phase 9)
+
+After Phases 8 and 9 are complete in code, this project follows an intentional **deploy track** before Phase 10 (sandbox). Full guide: [deploy-track.md](deploy-track.md).
+
+**Recommended order for this project:**
+
+```text
+Phases 8 → 9 → Deploy track (Phase 14a subset) → Phase 10 → 11 → … → Phase 14b completion → 15
+```
+
+| Step | What | Notes |
+| --- | --- | --- |
+| 8 + 9 | Retrieval + async worker | Prerequisites; implement per phase specs |
+| Deploy track | Dockerize API + worker, minimal AWS | Supabase for Postgres (D24); ECS Fargate, ALB, ElastiCache, Secrets Manager |
+| 14a | Minimal cloud deploy | Overlaps deploy track; not “Phase 14 complete” |
+| 10 | Docker sandbox | Paused until deploy track goals met **and** O1 (Docker in WSL) is fixed — not blocked by deploy |
+| 14b | Full Phase 14 DoD | OIDC CI, IAM hardening, O7 pooler verification, documented networking/cost |
+
+Phase 10 is security-critical for code execution but is **not required** to deploy the read-only agent (Phases 1–9). App containerization (`backend/Dockerfile`) is separate from sandbox containerization (`sandbox.Dockerfile`) — see D25.
 
 ## Phase 1 — FastAPI foundation
 
@@ -191,6 +211,8 @@ Full specification: [phase-07.md](phases/phase-07.md).
 
 **Commit.** `feat: add semantic retrieval with OpenAI embeddings and Pinecone`
 
+Full specification: [phase-08.md](phases/phase-08.md).
+
 ## Phase 9 — Background execution
 
 **Objective.** Stop holding an HTTP connection open for the duration of an agent run.
@@ -204,6 +226,8 @@ Full specification: [phase-07.md](phases/phase-07.md).
 **Definition of done.** `POST /tasks` persists the task, enqueues a job, and returns 202 with a task identifier without waiting for the agent; a worker process executes runs and updates status through `pending`, `running`, and a terminal state; `GET /tasks/{task_id}` reflects live status and returns the result when complete; a worker crash leaves the task in a recoverable state rather than stuck in `running` forever; the worker shuts down gracefully without abandoning an in-flight run silently.
 
 **Commit.** `feat: add background agent execution with Redis and ARQ`
+
+Full specification: [phase-09.md](phases/phase-09.md).
 
 ## Phase 10 — Docker sandbox
 
@@ -267,17 +291,37 @@ Full specification: [phase-07.md](phases/phase-07.md).
 
 **Objective.** Run the platform on AWS with an automated pipeline.
 
-**Concepts.** Multi-stage container builds, image registries, container orchestration, load balancing and health checks, secret injection, IAM roles and least privilege, OIDC-based CI authentication, log aggregation.
+This phase is **split** because the deploy track (D23, D26) intentionally delivers a subset early, after Phase 9.
 
-**Files.** `backend/Dockerfile`, `infrastructure/aws/`, `.github/workflows/{tests,deploy}.yml`, `docker-compose.yml` for local multi-service development.
+### Phase 14a — Minimal deploy (deploy track)
 
-**Dependencies.** None in Python; Docker, AWS, GitHub Actions.
+**Objective.** Containerize and run API + worker on AWS with external Supabase Postgres.
 
-**Target.** ECR for images, ECS on Fargate for the API and worker services, an Application Load Balancer, CloudWatch for logs and metrics, Secrets Manager or Parameter Store for secrets, IAM task roles for permissions.
+**Concepts.** Multi-stage container builds, ECR, ECS on Fargate, ALB health checks, ElastiCache Redis, Secrets Manager injection, CloudWatch logs.
 
-**Definition of done.** The image builds reproducibly and runs as a non-root user; API and worker deploy as separate services with independent scaling; secrets are injected at runtime and never baked into the image or committed; GitHub Actions authenticates to AWS through OIDC with no stored access keys; deployment happens only after tests pass; health checks drive load balancer registration; deployment architecture, networking, IAM, and cost considerations are documented.
+**Files.** `backend/Dockerfile`, `docker-compose.yml`, `infrastructure/aws/`, initial `.github/workflows/` (build → ECR optional if O1 blocks local Docker).
 
-**Commit.** `feat: containerize backend and add AWS deployment pipeline`
+**Target.** ECR, ECS Fargate (api + worker services), ALB, ElastiCache, Secrets Manager, Supabase `DATABASE_URL` (D24).
+
+**Definition of done (14a).** Image builds and runs as non-root; API and worker deploy as separate services; secrets injected at runtime; `POST /tasks` → 202 and worker E2E verified against Supabase; [deploy-track.md](deploy-track.md) verification checklist passed.
+
+**Commit.** `feat: containerize backend and add minimal AWS deployment`
+
+Guide: [deploy-track.md](deploy-track.md).
+
+### Phase 14b — Full deployment hardening
+
+**Objective.** Production-grade pipeline and operations (original Phase 14 DoD remainder).
+
+**Concepts.** OIDC-based CI authentication, IAM task roles and least privilege, documented networking and cost, Supabase pooler verification (O7).
+
+**Files.** `.github/workflows/{tests,deploy}.yml`, expanded `infrastructure/aws/` documentation.
+
+**Definition of done (14b).** GitHub Actions authenticates to AWS through OIDC with no stored access keys; deployment happens only after tests pass; health checks drive load balancer registration; deployment architecture, networking, IAM, and cost considerations are fully documented; O7 resolved for Supabase pooler if used.
+
+**Commit.** `feat: add OIDC deployment pipeline and AWS hardening`
+
+Phase 14 is **not complete** until both 14a and 14b are done.
 
 ## Phase 15 — Production hardening
 

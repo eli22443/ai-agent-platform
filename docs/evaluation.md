@@ -2,7 +2,7 @@
 
 ## Status
 
-Design document. No formal benchmark suite has been run yet. Manual live runs against public repos are possible now that Phase 6 is complete; evaluation becomes measurable at scale at Phase 7, when runs and tool calls are persisted. See [agent-optimization.md](agent-optimization.md) for informal live-run findings.
+Design document. No formal benchmark suite has been run yet. Manual live runs against public repos are possible now that Phase 6 is complete; evaluation becomes measurable at scale at Phase 7, when runs and tool calls are persisted. L1–L4 retrieval tasks become most meaningful after Phase 8 (semantic search); optional cloud deploy track runs can exercise the full async pipeline against a hosted stack. See [agent-optimization.md](agent-optimization.md) for informal live-run findings.
 
 ## Why this exists
 

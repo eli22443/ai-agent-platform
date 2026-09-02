@@ -110,14 +110,14 @@ Tools appear only in the phase that introduces them. Nothing below is stubbed in
 | `get_file_info` | No | 5 | Size, language, line count, existence |
 | `get_git_diff` | No | 5 | Working tree or commit-range diff |
 | `get_git_history` | No | 5 | Recent commits, optionally for one path |
-| `semantic_search` | No | 8 | Embedding-based retrieval via Pinecone |
+| `semantic_search` | No | 8 | Embedding-based retrieval via Pinecone; requires workspace indexed at current commit (Phase 8 `ensure_indexed`) |
 | `run_command` | Yes | 10 | Sandboxed, allow-listed, resource-limited |
 | `run_tests` | Yes | 10 | Sandboxed test execution with parsed results |
 | `install_dependencies` | Yes | 10 | Sandboxed, network policy applies |
 | `write_file` | Yes | 11 | Workspace-scoped write |
 | `apply_patch` | Yes | 11 | Unified-diff application with rejection on conflict |
 
-Retrieval strategy across phases: `search_code` is the primary discovery tool and stays that way. `semantic_search` is added alongside it in Phase 8 for conceptual queries where the user's wording does not match the source text. The tool descriptions state when to prefer each, because the choice is the model's to make.
+Retrieval strategy across phases: `search_code` is the primary discovery tool and stays that way. `semantic_search` is added alongside it in Phase 8 for conceptual queries where the user's wording does not match the source text. `semantic_search` only returns useful results after the repository has been indexed for the current commit. The tool descriptions state when to prefer each, because the choice is the model's to make.
 
 ## Safeguards
 

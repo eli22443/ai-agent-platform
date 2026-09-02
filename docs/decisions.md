@@ -6,7 +6,7 @@ A record of what was decided, why, and what was rejected. Its job is to stop set
 
 Three sections: settled decisions, open items that must not be resolved by assumption, and accepted technical debt.
 
-**Scope.** Decisions D1–D22 cover Phases 1–6. Phases 1–6 are implemented in `backend/`. D22 governs `POST /tasks/{task_id}/run`.
+**Scope.** Decisions D1–D26 cover Phases 1–9 and the deploy track. Phases 1–7 are implemented in `backend/`. D22 governs `POST /tasks/{task_id}/run` until Phase 9 repays sync execution debt. D23–D26 govern the deploy track after Phase 9.
 
 ## Settled decisions
 
@@ -188,6 +188,36 @@ Idempotency in Phase 6: a second `/run` on `completed`, `failed`, or `running` r
 
 Phase 6 implementation details locked in [phases/phase-06.md](phases/phase-06.md): explicit Responses API input list (not `previous_response_id` alone), read-only tool registry only, persist answer on `tasks.result` without Phase 7 `agent_runs` rows, and return an in-memory tool-call summary in the run response.
 
+### D23 — Deploy track after Phase 9 (before Phase 10)
+
+Complete Phases 8–9 locally, then run the minimal AWS deploy track documented in [deploy-track.md](deploy-track.md), then return to Phase 10 (sandbox).
+
+Rationale: learn ECS, workers, and Redis in production; the read-only agent (Phases 1–9) is deployable without Phase 10; O1 blocks sandbox development locally anyway.
+
+Rejected: waiting until Phase 14 as originally ordered, which delays production learning; skipping Phase 8 before deploy, which leaves retrieval untested in cloud.
+
+Consequence: recommended order is 8 → 9 → deploy track (14a) → 10 → … → 14b → 15. See [roadmap.md](roadmap.md).
+
+### D24 — Supabase for first cloud database
+
+The first AWS deploy uses Supabase for `DATABASE_URL` only. No application code changes — SQLAlchemy and Alembic work against the connection string (D6).
+
+Rejected for v1: RDS, which adds operational overhead before the application shape is proven in cloud.
+
+RDS is deferred, not rejected permanently. Revisit when managed hosting or compliance requires AWS-native Postgres.
+
+### D25 — App containerization ≠ sandbox containerization
+
+`backend/Dockerfile` runs the API and ARQ worker (deploy track, Phase 14a). Phase 10's `infrastructure/docker/sandbox.Dockerfile` is a separate image for untrusted code execution.
+
+Consequence: deploying the app to ECS does not satisfy Phase 10 sandbox requirements, and building the app image does not unblock `run_tests`.
+
+### D26 — Phase 14 subset early (14a vs 14b)
+
+Minimal ECR/ECS/ALB/ElastiCache deploy is intentional **Phase 14a** work, done as part of the deploy track after Phase 9. Full Phase 14 definition of done (**14b**) — OIDC CI, IAM hardening, documented networking/cost, O7 pooler verification — completes after the first successful cloud E2E run.
+
+Consequence: "Phase 14 complete" in the roadmap means 14a **and** 14b. Do not mark Phase 14 done after deploy track alone.
+
 ## Open items
 
 These must be resolved explicitly, not by assumption during implementation.
@@ -236,7 +266,9 @@ Decide by: the start of Phase 11.
 
 Local apt PostgreSQL (D19) has no transaction pooler, so prepared-statement settings are not a Phase 3 blocker.
 
-Decide by: the first time `DATABASE_URL` points at Supabase's transaction pooler (expected at production deployment, Phase 14). Verify `psycopg` against the pooler then and record the required settings here.
+**Deploy track (D24):** use Supabase **direct** connection string with `?sslmode=require`; transaction pooler settings are not required for first cloud deploy.
+
+Decide by: Phase 14b, when verifying `psycopg` against Supabase's transaction pooler if switching from direct connection. Record required settings here when verified.
 
 ### O8 — Chunking strategy for code embeddings
 
@@ -252,6 +284,8 @@ Decide by: implementation of Phase 8.
 | Validation errors omit the offending field | Phase 2 | A 422 says only "Request validation failed."; a client cannot tell which field was wrong or why | Deferred; revisit at Phase 15, or sooner if it slows development |
 | Synchronous clone on `POST /tasks` | Phase 4 | HTTP request stays open for `git clone`; timeouts feel like API failures | Phase 9 |
 | Synchronous agent execution on `POST /tasks/{id}/run` | Phase 6 | Long-held HTTP connections; pairs with sync clone debt. Early commit of `running` helps DB visibility mid-run but does not free the HTTP request | Phase 9 |
+| Sync indexing before agent on worker | Phase 8 | Slow first run per task when index is cold | Background indexer (post-Phase 9 optimization) |
+| Ephemeral workspaces on Fargate | Deploy track (D23) | Clones lost on ECS task restart | EFS or worker volume (Phase 14b/15) |
 | No authentication | Phase 1 | Anyone with network access can invoke the API | Phase 12, or on public exposure |
 | Public repositories only | Phase 4 | Cannot handle private repositories | Phase 12 |
 | Single evaluation fixture | Phase 6 | Benchmark may overfit to one repository's structure; informal live runs documented in [agent-optimization.md](agent-optimization.md) | See O6 |

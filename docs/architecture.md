@@ -15,7 +15,7 @@ This document describes the target architecture. Every component is annotated wi
 
 ## Status
 
-Phases 1–7 are implemented in `backend/`. Phase 8 (semantic retrieval) is the active specification — see [phases/phase-08.md](phases/phase-08.md). Components marked Phase 9+ do not exist yet unless noted.
+Phases 1–7 are implemented in `backend/`. Phase 8 (semantic retrieval) is the active specification — see [phases/phase-08.md](phases/phase-08.md). Phase 9 and cloud deploy are specified in [phases/phase-09.md](phases/phase-09.md) and [deploy-track.md](deploy-track.md). Components marked Phase 9+ do not exist in code yet unless noted.
 
 ## Target architecture
 
@@ -71,15 +71,15 @@ Endpoints as they accumulate:
 
 ```text
 GET  /health                 Phase 1
-POST /tasks                  Phase 2 persist; Phase 4 adds clone (returns pending)
+POST /tasks                  Phase 2 persist; Phase 4 sync clone; Phase 9 → 202 + enqueue
 GET  /tasks                  Phase 2
 GET  /tasks/{task_id}        Phase 2 (includes result/error after a run — Phase 6)
-POST /tasks/{task_id}/run    Phase 6 (sync agent; D22)
+POST /tasks/{task_id}/run    Phase 6 (sync agent; D22); Phase 9 removed or 410 Gone
 GET  /tasks/{task_id}/runs   Phase 7 (run history)
 GET  /tasks/{task_id}/runs/{run_id}  Phase 7 (run detail + tool calls)
 ```
 
-After Phase 9, long-running work moves to a worker; clients may still poll `GET /tasks/{task_id}` (or a 202 enqueue path) rather than holding `/run` open.
+After Phase 9, long-running work runs in an ARQ worker; clients poll `GET /tasks/{task_id}` instead of holding `/run` open. `POST /tasks` returns **202 Accepted** (see [phases/phase-09.md](phases/phase-09.md)).
 
 ### Persistence (Phase 3)
 
@@ -150,7 +150,55 @@ sequenceDiagram
 
 ### Phase 9+ (async)
 
-When Redis/ARQ lands, enqueue replaces holding `/run` (or clone) open; workers prepare the workspace and run the agent; clients poll `GET /tasks/{task_id}`. Full `agent_runs` / `tool_calls` persistence is Phase 7.
+When Redis/ARQ lands, `POST /tasks` enqueues a single job; the worker clones, indexes (Phase 8), and runs the agent; clients poll `GET /tasks/{task_id}`. Full `agent_runs` / `tool_calls` persistence is Phase 7.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant API as FastAPI
+    participant Q as Redis_ARQ
+    participant W as Worker
+    participant DB as PostgreSQL
+    participant R as Repository Service
+    participant A as Agent Loop
+
+    User->>API: POST /tasks {repository_url, instruction}
+    API->>DB: insert task (status=pending)
+    API->>Q: enqueue process_task(task_id)
+    API-->>User: 202 {task_id, status=pending}
+    W->>Q: dequeue job
+    W->>DB: status=running
+    W->>R: clone workspace
+    W->>W: ensure_indexed (Phase 8)
+    W->>A: run_agent()
+    loop until final answer or limit
+        A->>A: tools
+    end
+    W->>DB: status=completed, result, agent_runs
+    User->>API: GET /tasks/{task_id}
+    API-->>User: status and result
+```
+
+## Cloud deployment (deploy track)
+
+After Phases 8–9, the platform deploys to AWS per [deploy-track.md](deploy-track.md) (D23). Postgres remains external on **Supabase** (D24); Pinecone, OpenAI, and GitHub stay external.
+
+```mermaid
+flowchart TD
+    Client["Client"] -->|HTTPS| ALB["ALB"]
+    ALB --> API["ECS Fargate API"]
+    API -->|enqueue| Redis[("ElastiCache Redis")]
+    API --> DB[("Supabase PostgreSQL")]
+    Redis --> Worker["ECS Fargate Worker"]
+    Worker --> DB
+    Worker --> WS["Ephemeral workspace disk"]
+    Worker --> Ext["OpenAI Pinecone GitHub"]
+```
+
+- **Two ECS services** share one container image; API runs Uvicorn, worker runs ARQ (D25: not the Phase 10 sandbox image).
+- **Workspaces** on Fargate use ephemeral task disk in v1; clones are lost on task replacement (accepted debt in [decisions.md](decisions.md)).
+- **Secrets** from AWS Secrets Manager; worker has no inbound ports.
+- Phase 14 splits into **14a** (minimal deploy) and **14b** (OIDC CI, IAM hardening) per D26.
 
 ## Data model sketch
 
@@ -237,8 +285,8 @@ ai-agent-platform/
 │   └── uv.lock
 └── docs/
     ├── architecture.md, agent-design.md, agent-optimization.md, security.md, …
-    ├── roadmap.md, decisions.md
-    └── phases/phase-01.md … phase-08.md
+    ├── roadmap.md, decisions.md, deploy-track.md
+    └── phases/phase-01.md … phase-09.md
 ```
 
 Target additions by later phase (do not create placeholders early):
@@ -246,9 +294,13 @@ Target additions by later phase (do not create placeholders early):
 ```text
 backend/app/retrieval/              Phase 8
 backend/app/workers/                Phase 9
+backend/app/queue/                  Phase 9
+backend/Dockerfile                  Deploy track / Phase 14a
+docker-compose.yml                  Deploy track / Phase 14a
 backend/app/sandbox/                Phase 10
 backend/app/observability/          Phase 13
-infrastructure/, .github/workflows/ Phase 14
+infrastructure/aws/                 Deploy track / Phase 14a
+.github/workflows/                  Phase 14b (14a may add build → ECR only)
 ```
 
 ## Binding technology constraints

@@ -11,7 +11,7 @@ Instruction: Find why the authentication tests are failing and explain how to fi
 
 Phases 1–7 are complete in code. The MVP agent loop is live; runs and tool calls persist in PostgreSQL.
 
-Next: Phase 8 (semantic retrieval with Pinecone) — see [docs/phases/phase-08.md](docs/phases/phase-08.md). Live-run notes: [docs/agent-optimization.md](docs/agent-optimization.md).
+Next: **Phase 8** (semantic retrieval with Pinecone) — see [docs/phases/phase-08.md](docs/phases/phase-08.md). After Phase 9, follow the [deploy track](docs/deploy-track.md) for minimal AWS deployment before Phase 10 (sandbox). Live-run notes: [docs/agent-optimization.md](docs/agent-optimization.md).
 
 ## What it does
 
@@ -39,9 +39,21 @@ The agent investigates rather than guesses: it lists directories, searches the c
 | [docs/decisions.md](docs/decisions.md) | Settled decisions, open items, accepted technical debt |
 | [docs/roadmap.md](docs/roadmap.md) | All 15 phases with definitions of done |
 | [docs/phases/phase-08.md](docs/phases/phase-08.md) | Active Phase 8 specification (semantic retrieval) |
+| [docs/phases/phase-09.md](docs/phases/phase-09.md) | Phase 9 specification (background execution) |
+| [docs/deploy-track.md](docs/deploy-track.md) | AWS deploy after Phase 9 (Supabase, ECS, checklist) |
 | [docs/agent-optimization.md](docs/agent-optimization.md) | Live-run lessons: prompts, models, dispatch cache, reasoning replay |
 
 Start with [docs/phases/phase-08.md](docs/phases/phase-08.md) for the next implementation step.
+
+## After Phase 9 (async client flow)
+
+Once background execution lands, clients no longer call `POST /tasks/{task_id}/run` or wait on a long HTTP response:
+
+1. `POST /tasks` with `repository_url` and `instruction` → **202 Accepted** with `task_id` and `status: pending`.
+2. Poll `GET /tasks/{task_id}` until `status` is `completed` or `failed`.
+3. Read `result` or `error` from the task body.
+
+Clone, indexing (Phase 8), and the agent run execute in an ARQ worker. See [docs/phases/phase-09.md](docs/phases/phase-09.md) and [docs/deploy-track.md](docs/deploy-track.md) for cloud deployment.
 
 ## Technology
 
@@ -86,11 +98,12 @@ No frontend framework at any phase. Swagger UI at `/docs` is the demonstration s
 | [`uv`](https://docs.astral.sh/uv/) | Phase 1 | Dependency and environment management |
 | `git` | Phase 1 | Also the repository cloning mechanism from Phase 4 |
 | `ripgrep` | Phase 5 | `sudo apt install ripgrep`; an editor-bundled `rg` is not sufficient |
-| PostgreSQL connection | Phase 3 | Local apt Postgres for development (D19); Supabase is the production target (D6) |
+| PostgreSQL connection | Phase 3 | Local apt Postgres for development (D19); [Supabase](https://supabase.com) for cloud `DATABASE_URL` on deploy track (D24) |
 | OpenAI API key | Phase 6 | |
 | Pinecone account | Phase 8 | |
-| Redis | Phase 9 | |
-| Docker | Phase 10 | Currently unreachable from this WSL distribution; see [docs/decisions.md](docs/decisions.md) |
+| Redis | Phase 9 | Local `redis-server` or compose; ElastiCache on AWS deploy track |
+| Supabase project | Deploy track | Cloud database only; not required for local apt Postgres dev |
+| Docker | Phase 10 | Currently unreachable from this WSL distribution; see [docs/decisions.md](docs/decisions.md). O1 workaround for **app** images: CI build → ECR per [docs/deploy-track.md](docs/deploy-track.md) |
 
 ## Local setup
 
@@ -125,7 +138,7 @@ Set through the environment or a `.env` file in `backend/`. `.env` is git-ignore
 | `APP_ENV` | 1 | `local`, `test`, or `production` |
 | `LOG_LEVEL` | 1 | Logging verbosity, default `INFO` |
 | `DEBUG` | 1 | Debug behavior toggle, default `false` |
-| `DATABASE_URL` | 3 | PostgreSQL connection string |
+| `DATABASE_URL` | 3 | PostgreSQL connection string; local apt Postgres in dev (D19); Supabase direct URL in cloud (D24, [deploy-track.md](docs/deploy-track.md)) |
 | `WORKSPACES_ROOT` | 4 | Directory holding cloned repository workspaces |
 | `GIT_CLONE_TIMEOUT_SECONDS` | 4 | Clone timeout |
 | `MAX_REPO_SIZE_MB` | 4 | Clone size cap |
@@ -145,7 +158,7 @@ Set through the environment or a `.env` file in `backend/`. `.env` is git-ignore
 | `OPENAI_EMBEDDING_MODEL` | 8 | Embedding model, default `text-embedding-3-small` |
 | `PINECONE_API_KEY` | 8 | Pinecone credential |
 | `PINECONE_INDEX` | 8 | Pinecone index name |
-| `REDIS_URL` | 9 | Queue connection |
+| `REDIS_URL` | 9 | ARQ queue connection, e.g. `redis://127.0.0.1:6379/0` |
 | `SUPABASE_URL` | 12 | Auth issuer |
 | `SUPABASE_JWT_SECRET` | 12 | Token verification |
 | `LANGFUSE_PUBLIC_KEY` | 13 | Tracing |
@@ -168,10 +181,10 @@ Three levels, described in [docs/evaluation.md](docs/evaluation.md): unit tests 
 
 ```text
 ai-agent-platform/
-├── docs/                  Architecture, design, security, evaluation, roadmap
+├── docs/                  Architecture, design, security, evaluation, roadmap, deploy-track
 ├── backend/               FastAPI application and tests (from Phase 1)
-├── infrastructure/        Docker and AWS definitions (from Phase 14)
-└── .github/workflows/     CI and deployment (from Phase 14)
+├── infrastructure/        Docker sandbox (Phase 10) and AWS runbook (deploy track)
+└── .github/workflows/     CI and deployment (Phase 14b; 14a may add ECR build only)
 ```
 
 Directories appear in the phase that needs them. Placeholder modules are not created in advance.
