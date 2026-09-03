@@ -182,7 +182,7 @@ After deploy track step D, confirm:
 - [ ] `GET /tasks/{task_id}` eventually shows `completed` with a non-empty `result`.
 - [ ] Supabase `tasks` row exists for the task; `agent_runs` and `tool_calls` rows exist (Phase 7).
 - [ ] CloudWatch shows worker logs: clone, indexing (Phase 8), agent iterations.
-- [ ] Pinecone namespace created for the repository (if indexing enabled).
+- [ ] Pinecone namespace created for the task (`task-{task_id}`) if indexing enabled.
 - [ ] No secrets appear in logs or task/run rows.
 - [ ] Failed clone or bad URL surfaces `failed` status with error, not a stuck `running`.
 

@@ -99,7 +99,7 @@ Implemented directly against the OpenAI Responses API with native tool calling, 
 
 ### Retrieval (Phase 5 and Phase 8)
 
-Two complementary tracks, not competing ones. Lexical search with ripgrep arrives in Phase 5 and remains permanently useful, because exact identifier and string matching is often what a code question actually requires. Semantic search with OpenAI embeddings and Pinecone arrives in Phase 8 for conceptual queries where the user's wording does not match the source text. Vector search is not assumed to be the only or best way to retrieve code.
+Two complementary tracks, not competing ones. Lexical search with ripgrep arrives in Phase 5 and remains permanently useful, because exact identifier and string matching is often what a code question actually requires. Semantic search with OpenAI embeddings and Pinecone arrives in Phase 8 for conceptual queries where the user's wording does not match the source text. Vectors live in a Pinecone namespace per task workspace (`task-{task_id}`), not per repository URL, so concurrent tasks cannot clobber each other's index. Vector search is not assumed to be the only or best way to retrieve code.
 
 ### Background execution (Phase 9)
 

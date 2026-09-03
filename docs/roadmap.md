@@ -199,15 +199,15 @@ Full specification: [phase-07.md](phases/phase-07.md).
 
 **Objective.** Add semantic search alongside lexical search so the agent can find code by concept rather than by exact string.
 
-**Concepts.** Source-code chunking that respects structure, embedding models and dimensionality, vector upsert and query, metadata filtering, namespace design per repository, hybrid retrieval strategy, index freshness.
+**Concepts.** Source-code chunking that respects structure, embedding models and dimensionality, vector upsert and query, metadata filtering, namespace design per task workspace, hybrid retrieval strategy, index freshness.
 
 **Files.** `backend/app/retrieval/{chunking,embeddings,vector_store,indexer,search}.py`, a `semantic_search` tool, `backend/tests/test_chunking.py`, `backend/tests/test_retrieval_pipeline.py`.
 
 **Dependencies.** `uv add pinecone`.
 
-**Metadata per vector.** Repository identifier, file path, language, chunk start and end lines, and the commit SHA the chunk was indexed from.
+**Metadata per vector.** Task identifier, repository identifier, file path, language, chunk start and end lines, and the commit SHA the chunk was indexed from.
 
-**Definition of done.** Repository files are chunked with line ranges preserved and binary and vendored paths excluded; embeddings are generated in batches with retry on failure; vectors are upserted into a per-repository namespace; `semantic_search` returns ranked chunks with metadata sufficient to open the exact lines; lexical search remains available and the tool descriptions explain when to prefer each; chunking is unit tested without calling the embedding API; indexing cost and duration for the fixture repository are recorded.
+**Definition of done.** Repository files are chunked with line ranges preserved and binary and vendored paths excluded; embeddings are generated in batches with retry on failure; vectors are upserted into a per-task namespace (`task-{task_id}`); `semantic_search` returns ranked chunks with metadata sufficient to open the exact lines; lexical search remains available and the tool descriptions explain when to prefer each; chunking is unit tested without calling the embedding API; indexing cost and duration for the fixture repository are recorded.
 
 **Commit.** `feat: add semantic retrieval with OpenAI embeddings and Pinecone`
 
