@@ -14,9 +14,20 @@ from app.llm import OpenAILLMClient
 from app.repositories.errors import CloneError
 from app.repositories.service import RepositoryService
 from app.repositories.workspace import remove as remove_workspace
+from app.retrieval.embeddings import (
+    EmbeddingClient,
+    EmbeddingError,
+    OpenAIEmbeddingClient,
+)
+from app.retrieval.indexer import ensure_indexed
+from app.retrieval.vector_store import (
+    PineconeVectorStore,
+    VectorStore,
+    VectorStoreError,
+)
 from app.schemas.task import TaskStatus
 from app.services.agent_run_service import AgentRunService
-from app.services.errors import TaskNotFound, TaskNotRunnable
+from app.services.errors import RetrievalError, TaskNotFound, TaskNotRunnable
 from app.tools.base import ToolContext
 from app.tools.registry import ToolRegistry
 
@@ -38,10 +49,15 @@ class TaskService:
         session: Session,
         repository_service: RepositoryService,
         agent_run_service: AgentRunService,
+        *,
+        embedder: EmbeddingClient | None = None,
+        store: VectorStore | None = None,
     ) -> None:
         self._session = session
         self._repository_service = repository_service
         self._agent_run_service = agent_run_service
+        self._embedder = embedder
+        self._store = store
 
     def create(self, repository_url: str, instruction: str) -> Task:
         self._repository_service.validate_url(repository_url)
@@ -123,6 +139,24 @@ class TaskService:
             raise TaskNotRunnable("workspace missing or incomplete")
 
         settings = get_settings()
+        resolved_root = workspace_root.resolve()
+
+        if settings.retrieval_index_enabled:
+            try:
+                ensure_indexed(
+                    workspace_root=resolved_root,
+                    task_id=task_id,
+                    embedder=self._get_embedder(),
+                    store=self._get_store(),
+                    repository_id=repository_record.id,
+                    commit_sha=repository_record.last_commit_sha,
+                    chunk_lines=settings.retrieval_chunk_lines,
+                    overlap=settings.retrieval_chunk_overlap,
+                    max_file_bytes=settings.retrieval_max_file_bytes,
+                )
+            except (EmbeddingError, VectorStoreError) as exc:
+                raise RetrievalError(str(exc)) from exc
+
         now = datetime.now(UTC)
         task_record.status = TaskStatus.RUNNING.value
         task_record.updated_at = now
@@ -134,7 +168,7 @@ class TaskService:
         agent_result = run_agent(
             instruction=task_record.instruction,
             context=ToolContext(
-                workspace_root=workspace_root.resolve(),
+                workspace_root=resolved_root,
                 task_id=task_id,
             ),
             registry=registry,
@@ -169,6 +203,25 @@ class TaskService:
         self._session.flush()
         agent_result.run_id = run_record.id
         return agent_result
+
+    def _get_embedder(self) -> EmbeddingClient:
+        if self._embedder is not None:
+            return self._embedder
+        settings = get_settings()
+        return OpenAIEmbeddingClient(
+            api_key=settings.openai_api_key,
+            model=settings.openai_embedding_model,
+            batch_size=settings.retrieval_embed_batch_size,
+        )
+
+    def _get_store(self) -> VectorStore:
+        if self._store is not None:
+            return self._store
+        settings = get_settings()
+        return PineconeVectorStore(
+            api_key=settings.pinecone_api_key,
+            index_name=settings.pinecone_index,
+        )
 
 
 def _to_task(record: TaskRecord, repository_record: RepositoryRecord) -> Task:

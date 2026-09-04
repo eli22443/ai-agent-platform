@@ -17,6 +17,8 @@ TEST_DATABASE_URL = (
     "postgresql+psycopg://ai_agent:ai_agent@127.0.0.1:5432/ai_agent_platform_test"
 )
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+# Phase 8: never hit OpenAI embeddings / Pinecone from CI or local pytest.
+os.environ["RETRIEVAL_INDEX_ENABLED"] = "false"
 
 from app.config import get_settings
 

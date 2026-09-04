@@ -161,6 +161,35 @@ def test_run_llm_failure_returns_failed_status(client):
         _clear_llm_override(client)
 
 
+def test_run_retrieval_failure_returns_502(client, monkeypatch):
+    from app.config import get_settings
+    from app.retrieval.embeddings import EmbeddingError
+    from app.services.errors import RetrievalError
+    from tests.llm_fakes import text_response
+
+    monkeypatch.setenv("RETRIEVAL_INDEX_ENABLED", "true")
+    get_settings.cache_clear()
+
+    def boom(*args, **kwargs):
+        raise RetrievalError("embedding unavailable")
+
+    monkeypatch.setattr(
+        "app.services.task_service.ensure_indexed",
+        boom,
+    )
+    try:
+        task_id = client.post("/tasks", json=VALID_PAYLOAD).json()["task_id"]
+        _override_llm(client, [text_response("unused")])
+        response = client.post(f"/tasks/{task_id}/run")
+
+        assert response.status_code == 502
+        assert response.json()["error"]["message"] == "embedding unavailable"
+    finally:
+        monkeypatch.setenv("RETRIEVAL_INDEX_ENABLED", "false")
+        get_settings.cache_clear()
+        _clear_llm_override(client)
+
+
 def test_openapi_includes_run_path(client):
     response = client.get("/openapi.json")
     assert response.status_code == 200

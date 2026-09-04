@@ -11,7 +11,7 @@ Instruction: Find why the authentication tests are failing and explain how to fi
 
 Phases 1–7 are complete in code. The MVP agent loop is live; runs and tool calls persist in PostgreSQL.
 
-Next: **Phase 8** (semantic retrieval with Pinecone) — see [docs/phases/phase-08.md](docs/phases/phase-08.md). After Phase 9, follow the [deploy track](docs/deploy-track.md) for minimal AWS deployment before Phase 10 (sandbox). Live-run notes: [docs/agent-optimization.md](docs/agent-optimization.md).
+Next: **Phase 9** (background execution with Redis/ARQ) — see [docs/phases/phase-09.md](docs/phases/phase-09.md). After Phase 9, follow the [deploy track](docs/deploy-track.md) for minimal AWS deployment before Phase 10 (sandbox). Live-run notes: [docs/agent-optimization.md](docs/agent-optimization.md).
 
 ## What it does
 
@@ -38,7 +38,7 @@ The agent investigates rather than guesses: it lists directories, searches the c
 | [docs/evaluation.md](docs/evaluation.md) | Metrics, benchmark task set, grading approach |
 | [docs/decisions.md](docs/decisions.md) | Settled decisions, open items, accepted technical debt |
 | [docs/roadmap.md](docs/roadmap.md) | All 15 phases with definitions of done |
-| [docs/phases/phase-08.md](docs/phases/phase-08.md) | Active Phase 8 specification (semantic retrieval) |
+| [docs/phases/phase-08.md](docs/phases/phase-08.md) | Phase 8 specification (semantic retrieval — implemented) |
 | [docs/phases/phase-09.md](docs/phases/phase-09.md) | Phase 9 specification (background execution) |
 | [docs/deploy-track.md](docs/deploy-track.md) | AWS deploy after Phase 9 (Supabase, ECS, checklist) |
 | [docs/agent-optimization.md](docs/agent-optimization.md) | Live-run lessons: prompts, models, dispatch cache, reasoning replay |

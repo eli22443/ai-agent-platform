@@ -270,11 +270,11 @@ Local apt PostgreSQL (D19) has no transaction pooler, so prepared-statement sett
 
 Decide by: Phase 14b, when verifying `psycopg` against Supabase's transaction pooler if switching from direct connection. Record required settings here when verified.
 
-### O8 — Chunking strategy for code embeddings
+### O8 — Chunking strategy for code embeddings — resolved
 
-Phase 8 needs a chunking approach: fixed-size windows are simple but split functions, while structure-aware chunking requires parsing. tree-sitter would enable the latter and is currently deferred.
+Resolved in Phase 8: **line-window chunking with overlap** (default 80 lines, 20 overlap). tree-sitter AST chunking remains deferred until evaluation shows line windows are insufficient.
 
-Decide by: implementation of Phase 8.
+Vectors are namespaced per task workspace (`task-{task_id}`), not per repository URL. There is no commit_sha skip/rebuild check; each runnable task indexes its own namespace on `/run`.
 
 ## Accepted technical debt
 

@@ -12,3 +12,11 @@ class TaskNotRunnable(Exception):
 
 class AgentRunNotFound(Exception):
     pass
+
+
+class RetrievalError(Exception):
+    """Indexing or vector-store failure. Message is safe to surface upstream."""
+
+    def __init__(self, message: str = "Semantic index failed.") -> None:
+        self.message = message
+        super().__init__(message)

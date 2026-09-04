@@ -304,3 +304,87 @@ def test_run_halt_persists_completed_with_prefix(
         assert record.error is None
     finally:
         get_settings.cache_clear()
+
+
+def test_run_indexes_when_retrieval_enabled(
+    db_session: Session,
+    repository_service: RepositoryService,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.config import get_settings
+    from app.retrieval.vector_store import InMemoryVectorStore, namespace_for_task
+    from app.tools.registry import build_read_only_registry
+    from tests.llm_fakes import FakeLLMClient, text_response
+
+    class KeywordEmbedder:
+        def embed_texts(self, texts: list[str]) -> list[list[float]]:
+            return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setenv("RETRIEVAL_INDEX_ENABLED", "true")
+    get_settings.cache_clear()
+    store = InMemoryVectorStore()
+    try:
+        service = TaskService(
+            db_session,
+            repository_service,
+            AgentRunService(db_session),
+            embedder=KeywordEmbedder(),
+            store=store,
+        )
+        task = service.create(REQUESTS_URL, INSTRUCTION)
+        result = service.run(
+            task.id,
+            FakeLLMClient([text_response("ok")]),
+            build_read_only_registry(),
+        )
+
+        assert result.answer == "ok"
+        matches = store.query(namespace_for_task(task.id), [1.0, 0.0], top_k=5)
+        assert matches
+        assert any(m.metadata.get("file_path") for m in matches)
+    finally:
+        monkeypatch.setenv("RETRIEVAL_INDEX_ENABLED", "false")
+        get_settings.cache_clear()
+
+
+def test_run_retrieval_error_raises_before_agent(
+    db_session: Session,
+    repository_service: RepositoryService,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.config import get_settings
+    from app.retrieval.embeddings import EmbeddingError
+    from app.retrieval.vector_store import InMemoryVectorStore
+    from app.services.errors import RetrievalError
+    from app.tools.registry import build_read_only_registry
+    from tests.llm_fakes import FakeLLMClient, text_response
+
+    class FailingEmbedder:
+        def embed_texts(self, texts: list[str]) -> list[list[float]]:
+            raise EmbeddingError("embedding unavailable")
+
+    monkeypatch.setenv("RETRIEVAL_INDEX_ENABLED", "true")
+    get_settings.cache_clear()
+    try:
+        service = TaskService(
+            db_session,
+            repository_service,
+            AgentRunService(db_session),
+            embedder=FailingEmbedder(),
+            store=InMemoryVectorStore(),
+        )
+        task = service.create(REQUESTS_URL, INSTRUCTION)
+
+        with pytest.raises(RetrievalError, match="embedding unavailable"):
+            service.run(
+                task.id,
+                FakeLLMClient([text_response("should not run")]),
+                build_read_only_registry(),
+            )
+
+        record = db_session.get(TaskRecord, task.id)
+        assert record is not None
+        assert record.status == TaskStatus.PENDING.value
+    finally:
+        monkeypatch.setenv("RETRIEVAL_INDEX_ENABLED", "false")
+        get_settings.cache_clear()

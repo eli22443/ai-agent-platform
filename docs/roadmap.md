@@ -4,7 +4,7 @@
 
 Fifteen phases, executed in order. Each phase produces working software, has its own tests, and ends in a single commit. A phase introduces only the components it needs; nothing is stubbed in advance because it appears in the target architecture.
 
-This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 8](phases/phase-08.md) and [Phase 9](phases/phase-09.md). Phase 7 is complete; Phase 8 is the active implementation spec. The [deploy track](deploy-track.md) documents AWS deployment after Phase 9 (D23).
+This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 8](phases/phase-08.md) and [Phase 9](phases/phase-09.md). Phases 1–8 are complete; Phase 9 is next. The [deploy track](deploy-track.md) documents AWS deployment after Phase 9 (D23).
 
 Rules that apply to every phase:
 
@@ -26,7 +26,7 @@ Rules that apply to every phase:
 | 5 | Repository context tools | ripgrep | Complete |
 | 6 | OpenAI agent loop | OpenAI API | Complete |
 | 7 | Agent runs | None | Complete |
-| 8 | Semantic retrieval | Pinecone | Not started |
+| 8 | Semantic retrieval | Pinecone | Complete |
 | 9 | Background execution | Redis | Not started |
 | 10 | Docker sandbox | Docker | Not started |
 | 11 | Code modification | None | Not started |

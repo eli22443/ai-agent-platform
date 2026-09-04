@@ -26,7 +26,7 @@ from app.schemas.task import (
     ToolCallSummaryResponse,
 )
 from app.services.agent_run_service import AgentRunService
-from app.services.errors import TaskNotFound, TaskNotRunnable
+from app.services.errors import RetrievalError, TaskNotFound, TaskNotRunnable
 from app.services.task_service import Task, TaskService
 from app.tools.registry import ToolRegistry
 
@@ -59,6 +59,8 @@ def run_task(
         raise HTTPException(status_code=404, detail="Task not found.")
     except TaskNotRunnable as exc:
         raise HTTPException(status_code=409, detail=exc.message)
+    except RetrievalError as exc:
+        raise HTTPException(status_code=502, detail=exc.message)
 
     return _to_task_run_response(task_id, agent_result)
 
