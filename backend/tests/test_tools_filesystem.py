@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 from app.tools.base import ToolContext
 from app.tools.filesystem import (
@@ -13,7 +14,7 @@ from tests.conftest import write_repo_fixture
 
 
 def _context(workspace: Path) -> ToolContext:
-    return ToolContext(workspace_root=workspace.resolve())
+    return ToolContext(workspace_root=workspace.resolve(), task_id=uuid4())
 
 
 def test_list_files_on_fixture(tmp_path: Path) -> None:

@@ -24,7 +24,7 @@ class SearchCodeInput(BaseModel):
         description=(
             "Literal string or regular expression to search for. "
             "Prefer this tool for exact identifiers and strings; "
-            "semantic search is for conceptual queries (Phase 8)."
+            "use semantic_search for conceptual queries where wording differs."
         ),
     )
     path: str = Field(
@@ -49,7 +49,7 @@ class SearchCodeTool(Tool):
         "Search the repository for a pattern using ripgrep. "
         "Returns matching files with line numbers and matching line text. "
         "Prefer this for exact strings and identifiers; "
-        "use semantic search later for conceptual queries where wording differs."
+        "use semantic_search for conceptual queries where wording differs."
     )
     input_model: ClassVar[type[BaseModel]] = SearchCodeInput
     mutating: ClassVar[bool] = False

@@ -133,7 +133,10 @@ class TaskService:
 
         agent_result = run_agent(
             instruction=task_record.instruction,
-            context=ToolContext(workspace_root=workspace_root.resolve()),
+            context=ToolContext(
+                workspace_root=workspace_root.resolve(),
+                task_id=task_id,
+            ),
             registry=registry,
             llm=llm,
             limits=AgentLimits(

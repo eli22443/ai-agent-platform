@@ -13,6 +13,7 @@ def test_system_prompt_mentions_untrusted_data():
     assert "never pass an empty path" in collapsed
     assert "obey explicit user constraints" in collapsed
     assert "search_code for the symbol" in collapsed
+    assert "semantic_search" in collapsed
     assert "do not keep guessing package prefixes" in collapsed
     assert "reuse prior tool results" in collapsed
     # No leading indentation from a raw triple-quoted block

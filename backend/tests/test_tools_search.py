@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 from app.tools.base import ToolContext
 from app.tools.search import SearchCodeInput, SearchCodeTool, resolve_ripgrep_binary
@@ -6,7 +7,7 @@ from tests.conftest import write_repo_fixture
 
 
 def _context(workspace: Path) -> ToolContext:
-    return ToolContext(workspace_root=workspace.resolve())
+    return ToolContext(workspace_root=workspace.resolve(), task_id=uuid4())
 
 
 def test_resolve_ripgrep_prefers_system_binary() -> None:

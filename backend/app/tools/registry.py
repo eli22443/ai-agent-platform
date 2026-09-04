@@ -6,6 +6,7 @@ from app.tools.base import Tool, ToolContext, ToolResult
 from app.tools.filesystem import GetFileInfoTool, ListFilesTool, ReadFileTool
 from app.tools.git import GetGitDiffTool, GetGitHistoryTool
 from app.tools.search import SearchCodeTool
+from app.tools.semantic import SemanticSearchTool
 
 
 class ToolRegistry:
@@ -50,13 +51,17 @@ class ToolRegistry:
         return tool.execute(context, parsed)
 
 
-def build_read_only_registry() -> ToolRegistry:
+def build_read_only_registry(
+    *,
+    semantic_tool: SemanticSearchTool | None = None,
+) -> ToolRegistry:
     registry = ToolRegistry()
     for tool in (
         ListFilesTool(),
         ReadFileTool(),
         GetFileInfoTool(),
         SearchCodeTool(),
+        semantic_tool if semantic_tool is not None else SemanticSearchTool(),
         GetGitDiffTool(),
         GetGitHistoryTool(),
     ):

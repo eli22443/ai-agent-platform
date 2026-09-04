@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from uuid import uuid4
 from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -271,7 +272,7 @@ def test_token_fields_on_agent_result(tmp_path):
     llm = FakeLLMClient([text_response("ok")])
     result = run_agent(
         instruction="Explain the project.",
-        context=ToolContext(workspace_root=workspace.resolve()),
+        context=ToolContext(workspace_root=workspace.resolve(), task_id=uuid4()),
         registry=build_read_only_registry(),
         llm=llm,
         limits=AgentLimits(max_iterations=5, timeout_seconds=60, token_budget=0),

@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -19,6 +20,7 @@ class ToolResult:
 @dataclass(frozen=True)
 class ToolContext:
     workspace_root: Path
+    task_id: UUID
 
 
 class Tool(ABC):

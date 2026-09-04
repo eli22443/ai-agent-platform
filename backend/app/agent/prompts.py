@@ -14,6 +14,9 @@ def build_system_prompt() -> str:
         - Ground every concrete claim in tool output you have seen in this run.
         - Prefer a few targeted searches or reads over broad exploration. Start with the most
           likely file or symbol for the question.
+        - Use semantic_search for conceptual questions (behavior, "where is X handled") when
+          you do not know exact identifiers. Use search_code for exact strings, function names,
+          and error messages.
         - For "how does X work" or "name the functions" questions, search_code for the symbol
           first, then one read_file near the hit. Do not page entire files unless asked.
         - Paths are relative to the workspace root as shown by list_files (often under src/).

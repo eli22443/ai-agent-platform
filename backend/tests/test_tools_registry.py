@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 from app.tools.base import ToolContext
 from app.tools.registry import build_read_only_registry
@@ -9,16 +10,17 @@ _EXPECTED_TOOLS = {
     "read_file",
     "get_file_info",
     "search_code",
+    "semantic_search",
     "get_git_diff",
     "get_git_history",
 }
 
 
-def test_list_schemas_has_six_tools() -> None:
+def test_list_schemas_has_seven_tools() -> None:
     registry = build_read_only_registry()
     schemas = registry.list_schemas()
 
-    assert len(schemas) == 6
+    assert len(schemas) == 7
     names = {schema["name"] for schema in schemas}
     assert names == _EXPECTED_TOOLS
     for schema in schemas:
@@ -42,7 +44,7 @@ def test_execute_unknown_tool_returns_error(tmp_path: Path) -> None:
     registry = build_read_only_registry()
     result = registry.execute(
         "no_such_tool",
-        ToolContext(workspace_root=workspace.resolve()),
+        ToolContext(workspace_root=workspace.resolve(), task_id=uuid4()),
         {},
     )
 
@@ -57,7 +59,7 @@ def test_execute_invalid_args_returns_error_without_raise(
     registry = build_read_only_registry()
     result = registry.execute(
         "read_file",
-        ToolContext(workspace_root=workspace.resolve()),
+        ToolContext(workspace_root=workspace.resolve(), task_id=uuid4()),
         {},  # path is required
     )
 
@@ -69,7 +71,7 @@ def test_execute_invalid_args_returns_error_without_raise(
 def test_execute_empty_path_returns_validation_error(tmp_path: Path) -> None:
     workspace = write_repo_fixture(tmp_path / "workspace")
     registry = build_read_only_registry()
-    context = ToolContext(workspace_root=workspace.resolve())
+    context = ToolContext(workspace_root=workspace.resolve(), task_id=uuid4())
 
     for name, arguments in (
         ("list_files", {"path": ""}),
@@ -87,7 +89,7 @@ def test_execute_valid_read_file(tmp_path: Path) -> None:
     registry = build_read_only_registry()
     result = registry.execute(
         "read_file",
-        ToolContext(workspace_root=workspace.resolve()),
+        ToolContext(workspace_root=workspace.resolve(), task_id=uuid4()),
         {"path": "src/main.py"},
     )
 

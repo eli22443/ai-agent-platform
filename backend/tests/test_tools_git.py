@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from uuid import uuid4
 
 from app.tools.base import ToolContext
 from app.tools.git import (
@@ -14,7 +15,7 @@ from tests.conftest import init_git_repo
 
 
 def _context(workspace: Path) -> ToolContext:
-    return ToolContext(workspace_root=workspace.resolve())
+    return ToolContext(workspace_root=workspace.resolve(), task_id=uuid4())
 
 
 def _git(cwd: Path, *args: str) -> None:

@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -19,7 +20,7 @@ def _run(
 ):
     return run_agent(
         instruction="Explain the project structure.",
-        context=ToolContext(workspace_root=workspace.resolve()),
+        context=ToolContext(workspace_root=workspace.resolve(), task_id=uuid4()),
         registry=build_read_only_registry(),
         llm=llm,
         limits=limits

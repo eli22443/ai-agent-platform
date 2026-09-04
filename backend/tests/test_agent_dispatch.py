@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from uuid import uuid4
 from types import SimpleNamespace
 
 from app.agent.dispatch import (
@@ -45,7 +46,7 @@ def test_dispatch_valid_list_files(tmp_path: Path) -> None:
     result = dispatch_tool_calls(
         [call],
         registry=registry,
-        context=ToolContext(workspace_root=workspace.resolve()),
+        context=ToolContext(workspace_root=workspace.resolve(), task_id=uuid4()),
     )
 
     assert len(result.output_items) == 1
@@ -70,7 +71,7 @@ def test_dispatch_invalid_json_returns_error_output(tmp_path: Path) -> None:
     result = dispatch_tool_calls(
         [call],
         registry=registry,
-        context=ToolContext(workspace_root=workspace.resolve()),
+        context=ToolContext(workspace_root=workspace.resolve(), task_id=uuid4()),
     )
 
     payload = json.loads(result.output_items[0]["output"])
@@ -88,7 +89,7 @@ def test_dispatch_unknown_tool_returns_error(tmp_path: Path) -> None:
     result = dispatch_tool_calls(
         [call],
         registry=registry,
-        context=ToolContext(workspace_root=workspace.resolve()),
+        context=ToolContext(workspace_root=workspace.resolve(), task_id=uuid4()),
     )
 
     payload = json.loads(result.output_items[0]["output"])
@@ -105,7 +106,7 @@ def test_dispatch_tool_ok_false_still_returns_output(tmp_path: Path) -> None:
     result = dispatch_tool_calls(
         [call],
         registry=registry,
-        context=ToolContext(workspace_root=workspace.resolve()),
+        context=ToolContext(workspace_root=workspace.resolve(), task_id=uuid4()),
     )
 
     payload = json.loads(result.output_items[0]["output"])
@@ -117,7 +118,7 @@ def test_dispatch_tool_ok_false_still_returns_output(tmp_path: Path) -> None:
 def test_dispatch_dedupes_exact_repeat(tmp_path: Path) -> None:
     workspace = write_repo_fixture(tmp_path / "workspace")
     registry = build_read_only_registry()
-    context = ToolContext(workspace_root=workspace.resolve())
+    context = ToolContext(workspace_root=workspace.resolve(), task_id=uuid4())
     cache = DispatchCache()
     args = '{"path": "src/main.py", "start_line": 1}'
 
@@ -149,7 +150,7 @@ def test_dispatch_dedupes_near_duplicate_read_window(tmp_path: Path) -> None:
     workspace = write_repo_fixture(tmp_path / "workspace")
     (workspace / "long.txt").write_text("\n".join(f"line-{i}" for i in range(100)))
     registry = build_read_only_registry()
-    context = ToolContext(workspace_root=workspace.resolve())
+    context = ToolContext(workspace_root=workspace.resolve(), task_id=uuid4())
     cache = DispatchCache()
 
     first = dispatch_tool_calls(
@@ -201,7 +202,7 @@ def test_dispatch_dedupes_near_duplicate_read_window(tmp_path: Path) -> None:
 def test_dispatch_dedupes_failed_search_retry(tmp_path: Path) -> None:
     workspace = write_repo_fixture(tmp_path / "workspace")
     registry = build_read_only_registry()
-    context = ToolContext(workspace_root=workspace.resolve())
+    context = ToolContext(workspace_root=workspace.resolve(), task_id=uuid4())
     cache = DispatchCache()
     args = '{"query": "cookie", "path": "requests"}'
 
