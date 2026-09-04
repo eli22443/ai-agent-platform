@@ -4,12 +4,26 @@ from uuid import uuid4
 import pytest
 
 from app.retrieval.indexer import ensure_indexed
+from app.retrieval.search import semantic_search
 from app.retrieval.vector_store import InMemoryVectorStore, namespace_for_task
 
 
 class FakeEmbedder:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [[float(len(t) % 10), 1.0] for t in texts]
+
+
+class KeywordEmbedder:
+    """Maps texts containing 'cookie' near [1, 0]; others near [0, 1]."""
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        for text in texts:
+            if "cookie" in text.lower():
+                vectors.append([1.0, 0.0])
+            else:
+                vectors.append([0.0, 1.0])
+        return vectors
 
 
 class MismatchedEmbedder:
@@ -132,3 +146,80 @@ def test_ensure_indexed_idempotent_ids(tmp_path: Path) -> None:
     assert first.chunks_indexed == second.chunks_indexed
     matches = store.query(namespace_for_task(task_id), [1.0, 1.0], top_k=20)
     assert len(matches) == first.chunks_indexed
+
+
+def test_semantic_search_ranks_relevant_file_first(tmp_path: Path) -> None:
+    _write(tmp_path / "cookies.py", "def persist_cookie():\n    save_cookie()\n")
+    _write(tmp_path / "math.py", "def add(a, b):\n    return a + b\n")
+    task_id = uuid4()
+    store = InMemoryVectorStore()
+    embedder = KeywordEmbedder()
+
+    ensure_indexed(
+        workspace_root=tmp_path,
+        task_id=task_id,
+        embedder=embedder,
+        store=store,
+    )
+
+    hits = semantic_search(
+        task_id=task_id,
+        query="cookie persistence",
+        embedder=embedder,
+        store=store,
+        top_k=5,
+    )
+
+    assert hits
+    assert hits[0].file_path == "cookies.py"
+    assert hits[0].start_line >= 1
+    assert hits[0].snippet
+    assert hits[0].score >= hits[-1].score
+
+
+def test_semantic_search_path_prefix_filter(tmp_path: Path) -> None:
+    _write(tmp_path / "src" / "a.py", "cookie jar\n")
+    _write(tmp_path / "tests" / "b.py", "cookie jar\n")
+    task_id = uuid4()
+    store = InMemoryVectorStore()
+    embedder = KeywordEmbedder()
+
+    ensure_indexed(
+        workspace_root=tmp_path,
+        task_id=task_id,
+        embedder=embedder,
+        store=store,
+    )
+
+    hits = semantic_search(
+        task_id=task_id,
+        query="cookie",
+        embedder=embedder,
+        store=store,
+        path_prefix="src",
+        top_k=5,
+    )
+
+    assert hits
+    assert all(h.file_path.startswith("src/") for h in hits)
+
+
+def test_semantic_search_empty_query_raises() -> None:
+    with pytest.raises(ValueError, match="query"):
+        semantic_search(
+            task_id=uuid4(),
+            query="   ",
+            embedder=KeywordEmbedder(),
+            store=InMemoryVectorStore(),
+        )
+
+
+def test_semantic_search_empty_index_returns_empty() -> None:
+    hits = semantic_search(
+        task_id=uuid4(),
+        query="anything",
+        embedder=KeywordEmbedder(),
+        store=InMemoryVectorStore(),
+        top_k=5,
+    )
+    assert hits == []
