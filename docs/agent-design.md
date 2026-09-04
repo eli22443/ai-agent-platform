@@ -110,7 +110,7 @@ Tools appear only in the phase that introduces them. Nothing below is stubbed in
 | `get_file_info` | No | 5 | Size, language, line count, existence |
 | `get_git_diff` | No | 5 | Working tree or commit-range diff |
 | `get_git_history` | No | 5 | Recent commits, optionally for one path |
-| `semantic_search` | No | 8 | Embedding-based retrieval via Pinecone; requires workspace indexed at current commit (Phase 8 `ensure_indexed`) |
+| `semantic_search` | No | 8 | Embedding-based retrieval via Pinecone; requires workspace indexed for this task (Phase 8 `ensure_indexed`) |
 | `run_command` | Yes | 10 | Sandboxed, allow-listed, resource-limited |
 | `run_tests` | Yes | 10 | Sandboxed test execution with parsed results |
 | `install_dependencies` | Yes | 10 | Sandboxed, network policy applies |

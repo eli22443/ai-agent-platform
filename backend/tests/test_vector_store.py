@@ -18,14 +18,12 @@ def _record(
     id: str,
     values: list[float],
     *,
-    commit_sha: str = "abc123",
     language: str = "Python",
 ) -> VectorRecord:
     return VectorRecord(
         id=id,
         values=values,
         metadata={
-            "commit_sha": commit_sha,
             "file_path": "src/foo.py",
             "language": language,
         },
@@ -79,12 +77,9 @@ def test_in_memory_namespaces_are_isolated() -> None:
     store.upsert("task-b", [_record("b", [1.0, 0.0])])
 
     assert [m.id for m in store.query("task-a", [1.0, 0.0], top_k=5)] == ["a"]
-    assert store.namespace_commit_sha("task-a") == "abc123"
-    assert store.namespace_commit_sha("missing") is None
 
     store.delete_namespace("task-a")
     assert store.query("task-a", [1.0, 0.0], top_k=5) == []
-    assert store.namespace_commit_sha("task-a") is None
     assert [m.id for m in store.query("task-b", [1.0, 0.0], top_k=5)] == ["b"]
 
 
@@ -103,7 +98,7 @@ def test_pinecone_query_maps_matches(monkeypatch: pytest.MonkeyPatch) -> None:
                     SimpleNamespace(
                         id="vec-1",
                         score=0.82,
-                        metadata={"file_path": "src/foo.py", "commit_sha": "abc"},
+                        metadata={"file_path": "src/foo.py"},
                     )
                 ]
             )
@@ -111,7 +106,9 @@ def test_pinecone_query_maps_matches(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(store, "_get_index", lambda: fake_index)
 
-    matches = store.query("task-x", [0.1, 0.2], top_k=3, filter={"commit_sha": "abc"})
+    matches = store.query(
+        "task-x", [0.1, 0.2], top_k=3, filter={"language": "Python"}
+    )
 
     assert matches[0].id == "vec-1"
     assert matches[0].score == 0.82
@@ -119,32 +116,7 @@ def test_pinecone_query_maps_matches(monkeypatch: pytest.MonkeyPatch) -> None:
     kwargs = fake_index.query.call_args.kwargs
     assert kwargs["include_metadata"] is True
     assert kwargs["namespace"] == "task-x"
-    assert kwargs["filter"] == {"commit_sha": "abc"}
-
-
-def test_pinecone_namespace_commit_sha_reads_one_vector(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    store = PineconeVectorStore(api_key="pc-test", index_name="code-index")
-    page = SimpleNamespace(vectors=[SimpleNamespace(id="sha:src/foo.py:1:80")])
-    fetched = SimpleNamespace(
-        vectors={
-            "sha:src/foo.py:1:80": SimpleNamespace(
-                metadata={"commit_sha": "deadbeef"}
-            )
-        }
-    )
-    fake_index = SimpleNamespace(
-        list=MagicMock(return_value=iter([page])),
-        fetch=MagicMock(return_value=fetched),
-    )
-    monkeypatch.setattr(store, "_get_index", lambda: fake_index)
-
-    assert store.namespace_commit_sha("task-x") == "deadbeef"
-    fake_index.list.assert_called_once_with(namespace="task-x", limit=1)
-    fake_index.fetch.assert_called_once_with(
-        ids=["sha:src/foo.py:1:80"], namespace="task-x"
-    )
+    assert kwargs["filter"] == {"language": "Python"}
 
 
 def test_pinecone_wraps_sdk_errors(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -44,8 +44,6 @@ class VectorStore(Protocol):
 
     def delete_namespace(self, namespace: str) -> None: ...
 
-    def namespace_commit_sha(self, namespace: str) -> str | None: ...
-
 
 def namespace_for_task(task_id: UUID) -> str:
     return f"task-{task_id}"
@@ -125,32 +123,6 @@ class PineconeVectorStore:
             logger.exception("Pinecone namespace delete failed")
             raise VectorStoreError("Pinecone delete failed.") from exc
 
-    def namespace_commit_sha(self, namespace: str) -> str | None:
-        """
-        Workspace HEAD SHA stored on any vector in this namespace, or None if empty.
-        list() is a page iterator and fetch() returns a dict; next() takes the first item only.
-        """
-
-        index = self._get_index()
-        try:
-            page = next(index.list(namespace=namespace, limit=1), None)
-            if page is None:
-                return None
-            items = list(page.vectors or [])
-            if not items or not items[0].id:
-                return None
-            fetched = index.fetch(ids=[items[0].id], namespace=namespace)
-            record = next(iter((fetched.vectors or {}).values()), None)
-            if record is None:
-                return None
-            sha = (record.metadata or {}).get("commit_sha")
-            return str(sha) if sha else None
-        except NotFoundException:
-            return None
-        except PineconeException as exc:
-            logger.exception("Pinecone namespace inspection failed")
-            raise VectorStoreError("Pinecone query failed.") from exc
-
 
 class InMemoryVectorStore:
     def __init__(self) -> None:
@@ -185,13 +157,6 @@ class InMemoryVectorStore:
 
     def delete_namespace(self, namespace: str) -> None:
         self._namespaces.pop(namespace, None)
-
-    def namespace_commit_sha(self, namespace: str) -> str | None:
-        record = next(iter(self._namespaces.get(namespace, {}).values()), None)
-        if record is None:
-            return None
-        sha = record.metadata.get("commit_sha")
-        return str(sha) if sha else None
 
 
 def _cosine(left: list[float], right: list[float]) -> float:
