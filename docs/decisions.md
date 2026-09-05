@@ -6,7 +6,7 @@ A record of what was decided, why, and what was rejected. Its job is to stop set
 
 Three sections: settled decisions, open items that must not be resolved by assumption, and accepted technical debt.
 
-**Scope.** Decisions D1–D26 cover Phases 1–9 and the deploy track. Phases 1–7 are implemented in `backend/`. D22 governs `POST /tasks/{task_id}/run` until Phase 9 repays sync execution debt. D23–D26 govern the deploy track after Phase 9.
+**Scope.** Decisions D1–D26 cover Phases 1–9 and the deploy track. Phases 1–9 are implemented in `backend/`. D22 historically introduced a separate `/run` endpoint; Phase 9 repaid sync execution debt by enqueueing work on `POST /tasks`. D23–D26 govern the deploy track after Phase 9.
 
 ## Settled decisions
 
@@ -174,19 +174,19 @@ Rationale: Phase 5 tests and runtime need a stable binary on PATH in WSL and in 
 
 Rejected: vendoring a ripgrep binary in the repo (heavier maintenance); pure-Python search (slower, wrong learning goal for this phase).
 
-### D22 — Agent runs via `POST /tasks/{task_id}/run`
+### D22 — Agent runs via `POST /tasks/{task_id}/run` (superseded by Phase 9)
 
-Creating a task (`POST /tasks`) only validates, clones, and stores a `pending` task. The agent executes on a separate `POST /tasks/{task_id}/run`, which runs the OpenAI Responses loop synchronously and returns the answer.
+**Phase 6–8 (historical):** Creating a task (`POST /tasks`) validated, cloned, and stored a `pending` task. The agent executed on a separate `POST /tasks/{task_id}/run`, which ran the OpenAI Responses loop synchronously and returned the answer.
 
 Decided at the start of Phase 6.
 
-Rationale: keeps clone failures distinct from agent failures; makes the MVP flow explicit (create, then run); avoids making every task creation pay for an LLM call. Inline agent-on-create was rejected as harder to reason about and harder to evolve toward Phase 9 background jobs.
+Rationale (at the time): keep clone failures distinct from agent failures; make the MVP flow explicit (create, then run); avoid making every task creation pay for an LLM call. Inline agent-on-create was rejected as harder to reason about and harder to evolve toward background jobs.
 
-Consequence: Phase 6 `/run` holds the HTTP request for the whole agent loop (same class of debt as sync clone). Phase 9 moves execution to a worker; the separate-run resource can become enqueue or stay as an explicit trigger.
+**Phase 9 (current):** `POST /tasks` validates, persists `pending`, enqueues one ARQ job, and returns **202**. The worker runs `TaskService.process` (clone → index → agent). `POST /tasks/{task_id}/run` returns **410 Gone**. Clients short-poll `GET /tasks/{task_id}`.
 
-Idempotency in Phase 6: a second `/run` on `completed`, `failed`, or `running` returns 409. Re-run semantics wait for a later phase if needed.
+Idempotency: ARQ stable job id `process_task:{task_id}` plus `process` no-op when status is not `pending`. Re-run semantics wait for a later phase if needed.
 
-Phase 6 implementation details locked in [phases/phase-06.md](phases/phase-06.md): explicit Responses API input list (not `previous_response_id` alone), read-only tool registry only, persist answer on `tasks.result` without Phase 7 `agent_runs` rows, and return an in-memory tool-call summary in the run response.
+Phase 6 implementation details remain in [phases/phase-06.md](phases/phase-06.md); async orchestration is in [phases/phase-09.md](phases/phase-09.md).
 
 ### D23 — Deploy track after Phase 9 (before Phase 10)
 
@@ -274,7 +274,7 @@ Decide by: Phase 14b, when verifying `psycopg` against Supabase's transaction po
 
 Resolved in Phase 8: **line-window chunking with overlap** (default 80 lines, 20 overlap). tree-sitter AST chunking remains deferred until evaluation shows line windows are insufficient.
 
-Vectors are namespaced per task workspace (`task-{task_id}`), not per repository URL. There is no commit_sha skip/rebuild check; each runnable task indexes its own namespace on `/run`.
+Vectors are namespaced per task workspace (`task-{task_id}`), not per repository URL. There is no commit_sha skip/rebuild check; each runnable task indexes its own namespace during worker `process`.
 
 ## Accepted technical debt
 
@@ -282,8 +282,8 @@ Vectors are namespaced per task workspace (`task-{task_id}`), not per repository
 | --- | --- | --- | --- |
 | In-memory task store | Phase 2 | State lost on restart; single-process only | Phase 3 (implementation landed) |
 | Validation errors omit the offending field | Phase 2 | A 422 says only "Request validation failed."; a client cannot tell which field was wrong or why | Deferred; revisit at Phase 15, or sooner if it slows development |
-| Synchronous clone on `POST /tasks` | Phase 4 | HTTP request stays open for `git clone`; timeouts feel like API failures | Phase 9 |
-| Synchronous agent execution on `POST /tasks/{id}/run` | Phase 6 | Long-held HTTP connections; pairs with sync clone debt. Early commit of `running` helps DB visibility mid-run but does not free the HTTP request | Phase 9 |
+| Synchronous clone on `POST /tasks` | Phase 4 | HTTP request stays open for `git clone`; timeouts feel like API failures | Phase 9 (implementation landed) |
+| Synchronous agent execution on `POST /tasks/{id}/run` | Phase 6 | Long-held HTTP connections; pairs with sync clone debt. Early commit of `running` helps DB visibility mid-run but does not free the HTTP request | Phase 9 (implementation landed) |
 | Sync indexing before agent on worker | Phase 8 | Slow first run per task when index is cold | Background indexer (post-Phase 9 optimization) |
 | Concurrent workers racing the same pending task | Phase 9 | Two processes may both see `pending`, double-clone/index into `task-{task_id}`; retry can mix SHAs | Atomic status claim, advisory lock, and/or `delete_namespace` before upsert (deferred; see [phases/phase-09.md](phases/phase-09.md)) |
 | Ephemeral workspaces on Fargate | Deploy track (D23) | Clones lost on ECS task restart | EFS or worker volume (Phase 14b/15) |

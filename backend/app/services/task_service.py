@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -31,7 +31,7 @@ from app.retrieval.vector_store import (
 )
 from app.schemas.task import TaskStatus
 from app.services.agent_run_service import AgentRunService
-from app.services.errors import RetrievalError, TaskNotFound, TaskNotRunnable
+from app.services.errors import RetrievalError
 from app.tools.base import ToolContext
 from app.tools.registry import ToolRegistry
 
@@ -163,27 +163,31 @@ class TaskService:
         self._session.commit()
         return result
 
-    def run(
-        self, task_id: UUID, llm: OpenAILLMClient, registry: ToolRegistry
-    ) -> AgentResult:
-        """HTTP ``/run`` path (removed in Phase 9 step 5). Requires an existing workspace.
+    def fail_stuck_running_tasks(self, *, older_than_minutes: int | None = None) -> int:
+        """Mark long-running tasks as failed (manual / cron recovery).
 
-        Prefer ``process`` for the worker (clone + index + agent).
+        Returns the number of tasks updated. Does not re-queue jobs.
         """
-        row = self._load_row(task_id)
-        if row is None:
-            raise TaskNotFound()
-
-        task_record, repository_record = row
-
-        if task_record.status != TaskStatus.PENDING.value:
-            raise TaskNotRunnable(f"task is not runnable (status={task_record.status})")
-
-        workspace_root = self._repository_service.workspace_path_for(task_id)
-        if not workspace_root.is_dir():
-            raise TaskNotRunnable("workspace missing or incomplete")
-
-        return self._index_and_run(task_record, repository_record, llm, registry)
+        settings = get_settings()
+        minutes = (
+            older_than_minutes
+            if older_than_minutes is not None
+            else settings.stuck_task_threshold_minutes
+        )
+        cutoff = datetime.now(UTC) - timedelta(minutes=minutes)
+        rows = list(
+            self._session.scalars(
+                select(TaskRecord).where(
+                    TaskRecord.status == TaskStatus.RUNNING.value,
+                    TaskRecord.updated_at < cutoff,
+                )
+            ).all()
+        )
+        for record in rows:
+            self._mark_failed(record, "worker timeout")
+        if rows:
+            self._session.commit()
+        return len(rows)
 
     def _load_row(
         self, task_id: UUID

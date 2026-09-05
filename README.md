@@ -9,24 +9,24 @@ Instruction: Find why the authentication tests are failing and explain how to fi
 
 ## Status
 
-Phases 1–7 are complete in code. The MVP agent loop is live; runs and tool calls persist in PostgreSQL.
+Phases 1–9 are complete in code. Tasks enqueue to an ARQ worker; clients poll for results.
 
-Next: **Phase 9** (background execution with Redis/ARQ) — see [docs/phases/phase-09.md](docs/phases/phase-09.md). After Phase 9, follow the [deploy track](docs/deploy-track.md) for minimal AWS deployment before Phase 10 (sandbox). Live-run notes: [docs/agent-optimization.md](docs/agent-optimization.md).
+Next: the [deploy track](docs/deploy-track.md) for minimal AWS deployment before Phase 10 (sandbox). Spec: [docs/phases/phase-09.md](docs/phases/phase-09.md). Live-run notes: [docs/agent-optimization.md](docs/agent-optimization.md).
 
 ## What it does
 
 ```mermaid
 flowchart LR
-    Post["POST /tasks"] --> Persist["Persist task"]
-    Persist --> Clone["Clone into workspace"]
-    Clone --> Pending["status pending"]
-    Run["POST /tasks/id/run"] --> Loop["Agent loop"]
-    Loop --> Tools["list_files / search_code / read_file"]
+    Post["POST /tasks 202"] --> Enqueue["Enqueue ARQ job"]
+    Enqueue --> Worker["Worker: clone + index + agent"]
+    Worker --> Loop["Agent loop"]
+    Loop --> Tools["list_files / search_code / read_file / semantic_search"]
     Tools --> Loop
     Loop --> Answer["Engineering answer"]
+    Poll["GET /tasks/id"] --> Status["status + result"]
 ```
 
-The agent investigates rather than guesses: it lists directories, searches the code, reads the files that matter, and grounds its answer in what it actually found. Later phases add semantic retrieval, sandboxed test execution, and the ability to modify code and return a reviewable diff.
+The agent investigates rather than guesses: it lists directories, searches the code, reads the files that matter, and grounds its answer in what it actually found. Later phases add sandboxed test execution and the ability to modify code and return a reviewable diff.
 
 ## Documentation
 
@@ -39,21 +39,19 @@ The agent investigates rather than guesses: it lists directories, searches the c
 | [docs/decisions.md](docs/decisions.md) | Settled decisions, open items, accepted technical debt |
 | [docs/roadmap.md](docs/roadmap.md) | All 15 phases with definitions of done |
 | [docs/phases/phase-08.md](docs/phases/phase-08.md) | Phase 8 specification (semantic retrieval — implemented) |
-| [docs/phases/phase-09.md](docs/phases/phase-09.md) | Phase 9 specification (background execution) |
+| [docs/phases/phase-09.md](docs/phases/phase-09.md) | Phase 9 specification (background execution — implemented) |
 | [docs/deploy-track.md](docs/deploy-track.md) | AWS deploy after Phase 9 (Supabase, ECS, checklist) |
 | [docs/agent-optimization.md](docs/agent-optimization.md) | Live-run lessons: prompts, models, dispatch cache, reasoning replay |
 
-Start with [docs/phases/phase-08.md](docs/phases/phase-08.md) for the next implementation step.
+Start with [docs/deploy-track.md](docs/deploy-track.md) for the next implementation step.
 
-## After Phase 9 (async client flow)
-
-Once background execution lands, clients no longer call `POST /tasks/{task_id}/run` or wait on a long HTTP response:
+## Client flow (async)
 
 1. `POST /tasks` with `repository_url` and `instruction` → **202 Accepted** with `task_id` and `status: pending`.
 2. Poll `GET /tasks/{task_id}` until `status` is `completed` or `failed`.
 3. Read `result` or `error` from the task body.
 
-Clone, indexing (Phase 8), and the agent run execute in an ARQ worker. See [docs/phases/phase-09.md](docs/phases/phase-09.md) and [docs/deploy-track.md](docs/deploy-track.md) for cloud deployment.
+`POST /tasks/{task_id}/run` returns **410 Gone**. Clone, indexing, and the agent run execute in an ARQ worker. See [docs/phases/phase-09.md](docs/phases/phase-09.md) and [docs/deploy-track.md](docs/deploy-track.md) for cloud deployment.
 
 ## Technology
 

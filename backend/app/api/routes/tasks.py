@@ -3,15 +3,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.agent.types import AgentResult
 from app.api.dependencies import (
     get_agent_run_service,
-    get_llm_client,
     get_task_service,
-    get_tool_registry,
 )
 from app.database.models import AgentRunRecord, ToolCallRecord
-from app.llm.client import OpenAILLMClient
 from app.repositories.errors import InvalidRepositoryUrl
 from app.queue.client import QueueError
 from app.schemas.agent_run import (
@@ -22,19 +18,19 @@ from app.schemas.agent_run import (
 from app.schemas.task import (
     TaskCreateRequest,
     TaskResponse,
-    TaskRunResponse,
-    TaskStatus,
-    ToolCallSummaryResponse,
 )
 from app.services.agent_run_service import AgentRunService
-from app.services.errors import RetrievalError, TaskNotFound, TaskNotRunnable
 from app.services.task_service import Task, TaskService
-from app.tools.registry import ToolRegistry
 
 router = APIRouter(tags=["tasks"])
 
+_RUN_GONE_MESSAGE = (
+    "Agent runs start automatically when you create a task. "
+    "Use POST /tasks, then poll GET /tasks/{task_id} for status and result."
+)
 
-@router.post("/tasks", response_model=TaskResponse, status_code=201)
+
+@router.post("/tasks", response_model=TaskResponse, status_code=202)
 def create_task(
     payload: TaskCreateRequest, service: TaskService = Depends(get_task_service)
 ) -> TaskResponse:
@@ -58,23 +54,9 @@ def get_task(
     return _to_task_response(task)
 
 
-@router.post("/tasks/{task_id}/run", response_model=TaskRunResponse)
-def run_task(
-    task_id: UUID,
-    service: TaskService = Depends(get_task_service),
-    llm: OpenAILLMClient = Depends(get_llm_client),
-    registry: ToolRegistry = Depends(get_tool_registry),
-) -> TaskRunResponse:
-    try:
-        agent_result = service.run(task_id, llm, registry)
-    except TaskNotFound:
-        raise HTTPException(status_code=404, detail="Task not found.")
-    except TaskNotRunnable as exc:
-        raise HTTPException(status_code=409, detail=exc.message)
-    except RetrievalError as exc:
-        raise HTTPException(status_code=502, detail=exc.message)
-
-    return _to_task_run_response(task_id, agent_result)
+@router.post("/tasks/{task_id}/run", status_code=410)
+def run_task_gone(task_id: UUID) -> None:
+    raise HTTPException(status_code=410, detail=_RUN_GONE_MESSAGE)
 
 
 @router.get("/tasks/{task_id}/runs", response_model=list[AgentRunSummaryResponse])
@@ -125,28 +107,6 @@ def _to_task_response(task: Task) -> TaskResponse:
         created_at=task.created_at,
         result=task.result,
         error=task.error,
-    )
-
-
-def _to_task_run_response(task_id: UUID, agent_result: AgentResult) -> TaskRunResponse:
-    if agent_result.error:
-        status = TaskStatus.FAILED
-    else:
-        status = TaskStatus.COMPLETED
-    return TaskRunResponse(
-        task_id=task_id,
-        status=status,
-        answer=agent_result.answer,
-        halt_reason=agent_result.halt_reason,
-        iterations=agent_result.iterations,
-        tool_calls=[
-            ToolCallSummaryResponse(
-                name=call.name, args=call.args, ok=call.ok, duration_ms=call.duration_ms
-            )
-            for call in agent_result.tool_calls
-        ],
-        error=agent_result.error,
-        run_id=agent_result.run_id,
     )
 
 

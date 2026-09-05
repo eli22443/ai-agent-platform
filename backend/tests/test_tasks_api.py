@@ -6,10 +6,10 @@ VALID_PAYLOAD = {
 }
 
 
-def test_create_task_returns_201_with_pending_status(client):
+def test_create_task_returns_202_with_pending_status(client):
     response = client.post("/tasks", json=VALID_PAYLOAD)
 
-    assert response.status_code == 201
+    assert response.status_code == 202
     body = response.json()
     assert body["task_id"]
     assert body["status"] == "pending"
@@ -18,7 +18,7 @@ def test_create_task_returns_201_with_pending_status(client):
 def test_create_task_echoes_submitted_fields(client):
     response = client.post("/tasks", json=VALID_PAYLOAD)
 
-    assert response.status_code == 201
+    assert response.status_code == 202
     body = response.json()
     assert body["repository_url"] == VALID_PAYLOAD["repository_url"]
     assert body["instruction"] == VALID_PAYLOAD["instruction"]
@@ -29,8 +29,8 @@ def test_create_task_generates_unique_ids(client):
     first = client.post("/tasks", json=VALID_PAYLOAD)
     second = client.post("/tasks", json=VALID_PAYLOAD)
 
-    assert first.status_code == 201
-    assert second.status_code == 201
+    assert first.status_code == 202
+    assert second.status_code == 202
     assert first.json()["task_id"] != second.json()["task_id"]
 
 
@@ -185,7 +185,7 @@ def test_create_task_rejects_unknown_host(client):
 def test_create_task_does_not_clone(client, tmp_path: Path):
     response = client.post("/tasks", json=VALID_PAYLOAD)
 
-    assert response.status_code == 201
+    assert response.status_code == 202
     task_id = response.json()["task_id"]
     assert not (tmp_path / "workspaces" / task_id).exists()
 

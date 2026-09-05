@@ -1,222 +1,70 @@
 from uuid import UUID
 
-from app.api.dependencies import get_llm_client, get_repository_service
-from app.llm import LLMError
-from tests.llm_fakes import FakeLLMClient, text_response, tool_call_response
-
 VALID_PAYLOAD = {
     "repository_url": "https://github.com/psf/requests",
     "instruction": "Explain how the Session object is used for HTTP requests.",
 }
 
 
-def _override_llm(client, scripts: list) -> FakeLLMClient:
-    fake = FakeLLMClient(scripts)
-    client.app.dependency_overrides[get_llm_client] = lambda: fake
-    return fake
+def test_run_returns_410(client):
+    created = client.post("/tasks", json=VALID_PAYLOAD)
+    assert created.status_code == 202
+    task_id = created.json()["task_id"]
+
+    response = client.post(f"/tasks/{task_id}/run")
+
+    assert response.status_code == 410
+    body = response.json()
+    assert body["error"]["code"] == "gone"
+    assert "POST /tasks" in body["error"]["message"]
 
 
-def _clear_llm_override(client) -> None:
-    client.app.dependency_overrides.pop(get_llm_client, None)
+def test_run_unknown_task_still_410(client):
+    response = client.post("/tasks/00000000-0000-0000-0000-000000000000/run")
+    assert response.status_code == 410
 
 
-def _prepare_workspace(client, task_id: str, repository_url: str) -> None:
-    """Clone into the task workspace so legacy ``/run`` can execute (pre–step 5)."""
-    repo_service = client.app.dependency_overrides[get_repository_service]()
-    prepared = repo_service.prepare(repository_url, UUID(task_id))
-    # Mirror worker: stash HEAD metadata for the agent prompt.
-    from app.database.session import SessionLocal
-    from app.database.models import RepositoryRecord, TaskRecord
-
-    session = SessionLocal()
-    try:
-        task = session.get(TaskRecord, UUID(task_id))
-        assert task is not None
-        repo = session.get(RepositoryRecord, task.repository_id)
-        assert repo is not None
-        repo.default_branch = prepared.current_branch
-        repo.last_commit_sha = prepared.head_sha
-        session.commit()
-    finally:
-        session.close()
-
-
-def test_run_returns_200_with_answer(client):
-    fake = _override_llm(client, [text_response("Session manages cookies and headers.")])
-    try:
-        created = client.post("/tasks", json=VALID_PAYLOAD)
-        assert created.status_code == 201
-        task_id = created.json()["task_id"]
-        _prepare_workspace(client, task_id, VALID_PAYLOAD["repository_url"])
-
-        response = client.post(f"/tasks/{task_id}/run")
-
-        assert response.status_code == 200
-        body = response.json()
-        assert body["task_id"] == task_id
-        assert body["status"] == "completed"
-        assert body["answer"] == "Session manages cookies and headers."
-        assert body["halt_reason"] is None
-        assert body["error"] is None
-        assert body["iterations"] == 1
-        assert body["tool_calls"] == []
-        assert body["run_id"] is not None
-        assert fake.calls == 1
-
-        got = client.get(f"/tasks/{task_id}")
-        assert got.status_code == 200
-        assert got.json()["status"] == "completed"
-        assert got.json()["result"] == "Session manages cookies and headers."
-        assert got.json()["error"] is None
-
-        runs = client.get(f"/tasks/{task_id}/runs")
-        assert runs.status_code == 200
-        assert len(runs.json()) == 1
-        assert runs.json()[0]["run_id"] == body["run_id"]
-        assert runs.json()[0]["tool_call_count"] == 0
-    finally:
-        _clear_llm_override(client)
-
-
-def test_run_with_tool_call_then_answer(client):
-    _override_llm(
-        client,
-        [
-            tool_call_response(),
-            text_response("README and src/ are present."),
-        ],
-    )
-    try:
-        task_id = client.post("/tasks", json=VALID_PAYLOAD).json()["task_id"]
-        _prepare_workspace(client, task_id, VALID_PAYLOAD["repository_url"])
-        response = client.post(f"/tasks/{task_id}/run")
-
-        assert response.status_code == 200
-        body = response.json()
-        assert body["status"] == "completed"
-        assert body["answer"] == "README and src/ are present."
-        assert body["iterations"] == 2
-        assert len(body["tool_calls"]) == 1
-        assert body["tool_calls"][0]["name"] == "list_files"
-        assert body["tool_calls"][0]["ok"] is True
-        assert body["tool_calls"][0]["duration_ms"] >= 0
-        assert body["run_id"] is not None
-
-        runs = client.get(f"/tasks/{task_id}/runs")
-        assert runs.status_code == 200
-        assert runs.json()[0]["tool_call_count"] == len(body["tool_calls"])
-
-        detail = client.get(f"/tasks/{task_id}/runs/{body['run_id']}")
-        assert detail.status_code == 200
-        assert detail.json()["status"] == "completed"
-        assert len(detail.json()["tool_calls"]) == 1
-        assert detail.json()["tool_calls"][0]["sequence"] == 1
-        assert detail.json()["tool_calls"][0]["name"] == "list_files"
-    finally:
-        _clear_llm_override(client)
-
-
-def test_run_again_returns_409(client):
-    _override_llm(client, [text_response("done")])
-    try:
-        task_id = client.post("/tasks", json=VALID_PAYLOAD).json()["task_id"]
-        _prepare_workspace(client, task_id, VALID_PAYLOAD["repository_url"])
-        first = client.post(f"/tasks/{task_id}/run")
-        assert first.status_code == 200
-
-        second = client.post(f"/tasks/{task_id}/run")
-        assert second.status_code == 409
-        body = second.json()
-        assert body["error"]["code"] == "conflict"
-        assert "not runnable" in body["error"]["message"]
-    finally:
-        _clear_llm_override(client)
-
-
-def test_run_unknown_task_returns_404(client):
-    _override_llm(client, [text_response("unused")])
-    try:
-        response = client.post(
-            "/tasks/00000000-0000-0000-0000-000000000000/run"
-        )
-        assert response.status_code == 404
-        body = response.json()
-        assert body["error"]["code"] == "not_found"
-        assert body["error"]["message"] == "Task not found."
-    finally:
-        _clear_llm_override(client)
-
-
-def test_run_missing_workspace_returns_409(client):
-    _override_llm(client, [text_response("unused")])
-    try:
-        created = client.post("/tasks", json=VALID_PAYLOAD)
-        task_id = created.json()["task_id"]
-        # create no longer clones — workspace is absent without prepare.
-
-        response = client.post(f"/tasks/{task_id}/run")
-        assert response.status_code == 409
-        body = response.json()
-        assert body["error"]["code"] == "conflict"
-        assert "workspace" in body["error"]["message"]
-    finally:
-        _clear_llm_override(client)
-
-
-def test_run_llm_failure_returns_failed_status(client):
-    _override_llm(client, [LLMError("OpenAI request failed.")])
-    try:
-        task_id = client.post("/tasks", json=VALID_PAYLOAD).json()["task_id"]
-        _prepare_workspace(client, task_id, VALID_PAYLOAD["repository_url"])
-        response = client.post(f"/tasks/{task_id}/run")
-
-        assert response.status_code == 200
-        body = response.json()
-        assert body["status"] == "failed"
-        assert body["error"] == "OpenAI request failed."
-        assert body["halt_reason"] is None
-
-        got = client.get(f"/tasks/{task_id}")
-        assert got.json()["status"] == "failed"
-        assert got.json()["error"] == "OpenAI request failed."
-        assert got.json()["result"] is None
-    finally:
-        _clear_llm_override(client)
-
-
-def test_run_retrieval_failure_returns_502(client, monkeypatch):
-    from app.config import get_settings
-    from app.services.errors import RetrievalError
-    from tests.llm_fakes import text_response
-
-    monkeypatch.setenv("RETRIEVAL_INDEX_ENABLED", "true")
-    get_settings.cache_clear()
-
-    def boom(*args, **kwargs):
-        raise RetrievalError("embedding unavailable")
-
-    monkeypatch.setattr(
-        "app.services.task_service.ensure_indexed",
-        boom,
-    )
-    try:
-        task_id = client.post("/tasks", json=VALID_PAYLOAD).json()["task_id"]
-        _prepare_workspace(client, task_id, VALID_PAYLOAD["repository_url"])
-        _override_llm(client, [text_response("unused")])
-        response = client.post(f"/tasks/{task_id}/run")
-
-        assert response.status_code == 502
-        assert response.json()["error"]["message"] == "embedding unavailable"
-    finally:
-        monkeypatch.setenv("RETRIEVAL_INDEX_ENABLED", "false")
-        get_settings.cache_clear()
-        _clear_llm_override(client)
-
-
-def test_openapi_includes_run_path(client):
+def test_openapi_run_path_is_410(client):
     response = client.get("/openapi.json")
     assert response.status_code == 200
     paths = response.json()["paths"]
     assert "/tasks/{task_id}/run" in paths
+    run_post = paths["/tasks/{task_id}/run"]["post"]
+    assert "410" in run_post["responses"]
     assert "/tasks/{task_id}/runs" in paths
     assert "/tasks/{task_id}/runs/{run_id}" in paths
+
+
+def test_runs_history_after_process(
+    client, db_session, repository_service, monkeypatch
+):
+    from app.services.agent_run_service import AgentRunService
+    from app.services.task_service import TaskService
+    from app.tools.registry import build_read_only_registry
+    from tests.llm_fakes import FakeLLMClient, text_response, tool_call_response
+
+    created = client.post("/tasks", json=VALID_PAYLOAD)
+    task_id = UUID(created.json()["task_id"])
+
+    service = TaskService(
+        db_session, repository_service, AgentRunService(db_session)
+    )
+    result = service.process(
+        task_id,
+        FakeLLMClient(
+            [tool_call_response(), text_response("Done.")],
+        ),
+        build_read_only_registry(),
+    )
+    assert result is not None
+    run_id = result.run_id
+
+    listed = client.get(f"/tasks/{task_id}/runs")
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+    assert listed.json()[0]["run_id"] == str(run_id)
+    assert listed.json()[0]["tool_call_count"] == 1
+
+    detail = client.get(f"/tasks/{task_id}/runs/{run_id}")
+    assert detail.status_code == 200
+    assert detail.json()["result"] == "Done."

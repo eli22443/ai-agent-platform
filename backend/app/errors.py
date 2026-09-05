@@ -48,8 +48,10 @@ def _http_error_code(status_code: int) -> str:
         404: "not_found",
         405: "method_not_allowed",
         409: "conflict",
+        410: "gone",
         422: "validation_error",
         429: "too_many_requests",
+        503: "service_unavailable",
     }
     return mapping.get(status_code, "http_error")
 

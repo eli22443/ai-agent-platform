@@ -113,7 +113,7 @@ def test_restart_survives_via_api(client: TestClient):
         "/tasks",
         json={"repository_url": REQUESTS_URL, "instruction": INSTRUCTION},
     )
-    assert created.status_code == 201
+    assert created.status_code == 202
     task_id = created.json()["task_id"]
 
     get_settings.cache_clear()

@@ -1,5 +1,5 @@
 import inspect
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -122,17 +122,6 @@ def test_subprocess_is_confined_to_allowed_modules():
     assert offenders == []
 
 
-def test_run_unknown_task_raises_not_found(task_service: TaskService):
-    from app.services.errors import TaskNotFound
-
-    with pytest.raises(TaskNotFound):
-        task_service.run(
-            UUID("00000000-0000-0000-0000-000000000000"),
-            FakeLLMClient([text_response("x")]),
-            build_read_only_registry(),
-        )
-
-
 def test_process_success_persists_completed_result(
     db_session: Session, task_service: TaskService
 ):
@@ -170,19 +159,6 @@ def test_process_sets_commit_metadata(
     assert repository_record.default_branch == "main"
 
 
-def test_run_missing_workspace_raises_not_runnable(task_service: TaskService):
-    from app.services.errors import TaskNotRunnable
-
-    task = task_service.create(REQUESTS_URL, INSTRUCTION)
-
-    with pytest.raises(TaskNotRunnable, match="workspace"):
-        task_service.run(
-            task.id,
-            FakeLLMClient([text_response("x")]),
-            build_read_only_registry(),
-        )
-
-
 def test_process_second_time_is_noop(task_service: TaskService):
     task = task_service.create(REQUESTS_URL, INSTRUCTION)
     registry = build_read_only_registry()
@@ -194,6 +170,39 @@ def test_process_second_time_is_noop(task_service: TaskService):
         )
         is None
     )
+
+
+def test_fail_stuck_running_tasks(
+    db_session: Session, task_service: TaskService
+) -> None:
+    task = task_service.create(REQUESTS_URL, INSTRUCTION)
+    record = db_session.get(TaskRecord, task.id)
+    assert record is not None
+    record.status = TaskStatus.RUNNING.value
+    record.updated_at = datetime.now(UTC) - timedelta(minutes=60)
+    db_session.commit()
+
+    n = task_service.fail_stuck_running_tasks(older_than_minutes=30)
+
+    assert n == 1
+    db_session.refresh(record)
+    assert record.status == TaskStatus.FAILED.value
+    assert record.error == "worker timeout"
+
+
+def test_fail_stuck_running_tasks_ignores_fresh(
+    db_session: Session, task_service: TaskService
+) -> None:
+    task = task_service.create(REQUESTS_URL, INSTRUCTION)
+    record = db_session.get(TaskRecord, task.id)
+    assert record is not None
+    record.status = TaskStatus.RUNNING.value
+    record.updated_at = datetime.now(UTC)
+    db_session.commit()
+
+    assert task_service.fail_stuck_running_tasks(older_than_minutes=30) == 0
+    db_session.refresh(record)
+    assert record.status == TaskStatus.RUNNING.value
 
 
 def test_process_llm_error_persists_failed(
@@ -349,16 +358,14 @@ def test_process_indexes_when_retrieval_enabled(
         get_settings.cache_clear()
 
 
-def test_run_retrieval_error_raises_before_agent(
+def test_process_retrieval_error_marks_failed(
     db_session: Session,
     repository_service: RepositoryService,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """HTTP ``run`` still raises RetrievalError; worker ``process`` marks failed."""
     from app.config import get_settings
     from app.retrieval.embeddings import EmbeddingError
     from app.retrieval.vector_store import InMemoryVectorStore
-    from app.services.errors import RetrievalError
 
     class FailingEmbedder:
         def embed_texts(self, texts: list[str]) -> list[list[float]]:
@@ -375,18 +382,17 @@ def test_run_retrieval_error_raises_before_agent(
             store=InMemoryVectorStore(),
         )
         task = service.create(REQUESTS_URL, INSTRUCTION)
-        repository_service.prepare(REQUESTS_URL, task.id)
+        result = service.process(
+            task.id,
+            FakeLLMClient([text_response("should not run")]),
+            build_read_only_registry(),
+        )
 
-        with pytest.raises(RetrievalError, match="embedding unavailable"):
-            service.run(
-                task.id,
-                FakeLLMClient([text_response("should not run")]),
-                build_read_only_registry(),
-            )
-
+        assert result is None
         record = db_session.get(TaskRecord, task.id)
         assert record is not None
-        assert record.status == TaskStatus.PENDING.value
+        assert record.status == TaskStatus.FAILED.value
+        assert record.error == "embedding unavailable"
     finally:
         monkeypatch.setenv("RETRIEVAL_INDEX_ENABLED", "false")
         get_settings.cache_clear()

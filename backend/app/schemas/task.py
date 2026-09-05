@@ -25,21 +25,3 @@ class TaskResponse(BaseModel):
     created_at: datetime
     result: str | None = None
     error: str | None = None
-
-
-class ToolCallSummaryResponse(BaseModel):
-    name: str
-    args: str
-    ok: bool
-    duration_ms: int
-
-
-class TaskRunResponse(BaseModel):
-    task_id: UUID
-    status: TaskStatus
-    answer: str
-    halt_reason: str | None
-    iterations: int
-    tool_calls: list[ToolCallSummaryResponse]
-    error: str | None
-    run_id: UUID | None = None

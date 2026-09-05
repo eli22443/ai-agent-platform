@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from uuid import uuid4
+from uuid import UUID, uuid4
 from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -214,54 +214,53 @@ def test_failed_tool_call_stores_error(
     assert call.error
 
 
-def test_get_runs_api(client):
-    from app.api.dependencies import get_llm_client
-    from tests.test_tasks_run_api import _prepare_workspace
+def test_get_runs_api(client, db_session, repository_service):
+    task_id = client.post(
+        "/tasks",
+        json={"repository_url": REQUESTS_URL, "instruction": INSTRUCTION},
+    ).json()["task_id"]
 
-    fake = FakeLLMClient(
-        [
-            tool_call_response(),
-            text_response("Done."),
-        ]
+    empty = client.get(f"/tasks/{task_id}/runs")
+    assert empty.status_code == 200
+    assert empty.json() == []
+
+    service = TaskService(
+        db_session, repository_service, AgentRunService(db_session)
     )
-    client.app.dependency_overrides[get_llm_client] = lambda: fake
-    try:
-        task_id = client.post(
-            "/tasks",
-            json={"repository_url": REQUESTS_URL, "instruction": INSTRUCTION},
-        ).json()["task_id"]
-        _prepare_workspace(client, task_id, REQUESTS_URL)
+    result = service.process(
+        UUID(task_id),
+        FakeLLMClient(
+            [
+                tool_call_response(),
+                text_response("Done."),
+            ]
+        ),
+        build_read_only_registry(),
+    )
+    assert result is not None
+    run_id = result.run_id
 
-        empty = client.get(f"/tasks/{task_id}/runs")
-        assert empty.status_code == 200
-        assert empty.json() == []
+    listed = client.get(f"/tasks/{task_id}/runs")
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+    summary = listed.json()[0]
+    assert summary["run_id"] == str(run_id)
+    assert summary["status"] == "completed"
+    assert summary["tool_call_count"] == 1
 
-        run_body = client.post(f"/tasks/{task_id}/run").json()
-        run_id = run_body["run_id"]
+    detail = client.get(f"/tasks/{task_id}/runs/{run_id}")
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["result"] == "Done."
+    assert body["error"] is None
+    assert len(body["tool_calls"]) == 1
+    assert body["tool_calls"][0]["sequence"] == 1
+    assert body["tool_calls"][0]["deduplicated"] is False
 
-        listed = client.get(f"/tasks/{task_id}/runs")
-        assert listed.status_code == 200
-        assert len(listed.json()) == 1
-        summary = listed.json()[0]
-        assert summary["run_id"] == run_id
-        assert summary["status"] == "completed"
-        assert summary["tool_call_count"] == 1
-
-        detail = client.get(f"/tasks/{task_id}/runs/{run_id}")
-        assert detail.status_code == 200
-        body = detail.json()
-        assert body["result"] == "Done."
-        assert body["error"] is None
-        assert len(body["tool_calls"]) == 1
-        assert body["tool_calls"][0]["sequence"] == 1
-        assert body["tool_calls"][0]["deduplicated"] is False
-
-        missing = client.get(
-            f"/tasks/{task_id}/runs/00000000-0000-0000-0000-000000000000"
-        )
-        assert missing.status_code == 404
-    finally:
-        client.app.dependency_overrides.pop(get_llm_client, None)
+    missing = client.get(
+        f"/tasks/{task_id}/runs/00000000-0000-0000-0000-000000000000"
+    )
+    assert missing.status_code == 404
 
 
 def test_token_fields_on_agent_result(tmp_path):

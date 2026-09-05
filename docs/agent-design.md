@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines how the agent works: the tool-calling loop, the tool contract, the catalog of tools and when each arrives, and the safeguards that keep a run bounded. The tools landed in Phase 5. The agent loop landed in Phase 6 ([phases/phase-06.md](phases/phase-06.md)) and is triggered by `POST /tasks/{task_id}/run` after clone (D22), not inline on `POST /tasks`. Live-run hardening and model notes: [agent-optimization.md](agent-optimization.md).
+This document defines how the agent works: the tool-calling loop, the tool contract, the catalog of tools and when each arrives, and the safeguards that keep a run bounded. The tools landed in Phase 5. The agent loop landed in Phase 6 ([phases/phase-06.md](phases/phase-06.md)). From Phase 9, runs start via the ARQ worker after `POST /tasks` (D22 updated); clients poll `GET /tasks/{task_id}` rather than calling `/run`. Live-run hardening and model notes: [agent-optimization.md](agent-optimization.md).
 
 ## Design stance
 
@@ -137,7 +137,7 @@ When a limit is reached, the run does not fail silently and does not pretend to 
 
 ## Agent run record
 
-Phase 6 returns a light tool-call summary on `POST /tasks/{task_id}/run` and stores the final answer on `tasks.result`. Phase 7 persists full `agent_runs` and `tool_calls` so behavior is inspectable after the fact — the foundation Phase 13 observability builds on.
+Phase 6 returned a light tool-call summary on `POST /tasks/{task_id}/run` and stored the final answer on `tasks.result`. Phase 7 persists full `agent_runs` and `tool_calls` so behavior is inspectable after the fact — the foundation Phase 13 observability builds on. Phase 9 moved execution to the worker; answers still land on `tasks.result` and run history remains on the Phase 7 routes.
 
 Recorded per run (Phase 7): task reference, model, status, iteration count, token usage where available, start and finish timestamps, final result, and error information. Recorded per tool call: tool name, arguments, status, duration, and error. See the data model in [architecture.md](architecture.md).
 
@@ -157,6 +157,6 @@ The most important instruction concerns untrusted content. Repository files may 
 
 ## Evolution path
 
-Phase 6 delivers a single agent with read-only tools that answers questions about a repository via `POST /tasks/{task_id}/run`. Default model and iteration budget, plus live-run mitigations, are documented in [agent-optimization.md](agent-optimization.md). Phase 11 extends it to modification, where the loop gains a natural inner cycle: investigate, modify, run tests, inspect failures, repair, and finish by returning a reviewable diff. Changes are never pushed to the user's repository automatically.
+Phase 6 delivered a single agent with read-only tools that answers questions about a repository. From Phase 9, create a task with `POST /tasks` and poll for the answer. Default model and iteration budget, plus live-run mitigations, are documented in [agent-optimization.md](agent-optimization.md). Phase 11 extends it to modification, where the loop gains a natural inner cycle: investigate, modify, run tests, inspect failures, repair, and finish by returning a reviewable diff. Changes are never pushed to the user's repository automatically.
 
 Multi-agent orchestration, planner/executor separation, and persistent cross-run memory are explicitly out of scope until the single-agent loop is measurably insufficient.

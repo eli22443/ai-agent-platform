@@ -4,7 +4,7 @@
 
 Fifteen phases, executed in order. Each phase produces working software, has its own tests, and ends in a single commit. A phase introduces only the components it needs; nothing is stubbed in advance because it appears in the target architecture.
 
-This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 8](phases/phase-08.md) and [Phase 9](phases/phase-09.md). Phases 1–8 are complete; Phase 9 is next. The [deploy track](deploy-track.md) documents AWS deployment after Phase 9 (D23).
+This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 9](phases/phase-09.md). Phases 1–9 are complete; next is the [deploy track](deploy-track.md) (D23), then Phase 10 (sandbox).
 
 Rules that apply to every phase:
 
@@ -27,7 +27,7 @@ Rules that apply to every phase:
 | 6 | OpenAI agent loop | OpenAI API | Complete |
 | 7 | Agent runs | None | Complete |
 | 8 | Semantic retrieval | Pinecone | Complete |
-| 9 | Background execution | Redis | Not started |
+| 9 | Background execution | Redis | Complete |
 | 10 | Docker sandbox | Docker | Not started |
 | 11 | Code modification | None | Not started |
 | 12 | Authentication, optional | Supabase Auth | Not started |
@@ -225,7 +225,7 @@ Full specification: [phase-08.md](phases/phase-08.md).
 
 **Definition of done.** `POST /tasks` persists the task, enqueues a job, and returns 202 with a task identifier without waiting for the agent; a worker process executes runs and updates status through `pending`, `running`, and a terminal state; `GET /tasks/{task_id}` reflects live status and returns the result when complete; a worker crash leaves the task in a recoverable state rather than stuck in `running` forever; the worker shuts down gracefully without abandoning an in-flight run silently.
 
-**Notes.** Progress channel is **short poll** in Phase 9. **SSE** and **concurrent `process` hardening** (atomic claim / lock / clean re-index) are deferred — see deferred table and [phase-09.md](phases/phase-09.md).
+**Notes.** Progress channel is **short poll**. **SSE** and **concurrent `process` hardening** remain deferred — see deferred table and [phase-09.md](phases/phase-09.md). Status: **complete**.
 
 **Commit.** `feat: add background agent execution with Redis and ARQ`
 

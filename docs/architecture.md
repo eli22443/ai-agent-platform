@@ -15,7 +15,7 @@ This document describes the target architecture. Every component is annotated wi
 
 ## Status
 
-Phases 1–7 are implemented in `backend/`. Phase 8 (semantic retrieval) is the active specification — see [phases/phase-08.md](phases/phase-08.md). Phase 9 and cloud deploy are specified in [phases/phase-09.md](phases/phase-09.md) and [deploy-track.md](deploy-track.md). Components marked Phase 9+ do not exist in code yet unless noted.
+Phases 1–9 are implemented in `backend/`. Next is the [deploy track](deploy-track.md) (AWS), then Phase 10 (sandbox). See [phases/phase-09.md](phases/phase-09.md) for background execution.
 
 ## Target architecture
 
@@ -71,15 +71,15 @@ Endpoints as they accumulate:
 
 ```text
 GET  /health                 Phase 1
-POST /tasks                  Phase 2 persist; Phase 4 sync clone; Phase 9 → 202 + enqueue
+POST /tasks                  Phase 2 persist; Phase 9 → 202 + enqueue (no sync clone)
 GET  /tasks                  Phase 2
-GET  /tasks/{task_id}        Phase 2 (includes result/error after a run — Phase 6)
-POST /tasks/{task_id}/run    Phase 6 (sync agent; D22); Phase 9 removed or 410 Gone
+GET  /tasks/{task_id}        Phase 2 (poll status/result after Phase 9)
+POST /tasks/{task_id}/run    Phase 6 (sync agent; historical); Phase 9 → 410 Gone
 GET  /tasks/{task_id}/runs   Phase 7 (run history)
 GET  /tasks/{task_id}/runs/{run_id}  Phase 7 (run detail + tool calls)
 ```
 
-After Phase 9, long-running work runs in an ARQ worker; clients poll `GET /tasks/{task_id}` instead of holding `/run` open. `POST /tasks` returns **202 Accepted** (see [phases/phase-09.md](phases/phase-09.md)).
+Clients short-poll `GET /tasks/{task_id}` for status and results. `POST /tasks` returns **202 Accepted** (see [phases/phase-09.md](phases/phase-09.md)).
 
 ### Persistence (Phase 3)
 
@@ -95,7 +95,7 @@ Each tool has a name, a description used by the model, a JSON Schema for its inp
 
 ### Agent loop (Phase 6)
 
-Implemented directly against the OpenAI Responses API with native tool calling, deliberately framework-light. Triggered by `POST /tasks/{task_id}/run` after a successful clone (D22) — not inline on `POST /tasks`. The loop sends the instruction and tool schemas from `build_read_only_registry()`, detects tool calls, dispatches them (with a per-run dedupe cache), feeds results back, and repeats until the model produces a final answer or a safeguard limit is reached. Reasoning-model responses replay `reasoning` items with function calls. Phase 6 persists the answer on `tasks.result`; full `agent_runs` / `tool_calls` rows arrive in Phase 7. Defaults and live-run notes: [agent-optimization.md](agent-optimization.md).
+Implemented directly against the OpenAI Responses API with native tool calling, deliberately framework-light. Triggered by the ARQ worker via `TaskService.process` after `POST /tasks` enqueues a job (D22 as updated in Phase 9). The loop sends the instruction and tool schemas from `build_read_only_registry()`, detects tool calls, dispatches them (with a per-run dedupe cache), feeds results back, and repeats until the model produces a final answer or a safeguard limit is reached. Reasoning-model responses replay `reasoning` items with function calls. Answers persist on `tasks.result`; full `agent_runs` / `tool_calls` rows are Phase 7. Defaults and live-run notes: [agent-optimization.md](agent-optimization.md).
 
 ### Retrieval (Phase 5 and Phase 8)
 
@@ -103,7 +103,7 @@ Two complementary tracks, not competing ones. Lexical search with ripgrep arrive
 
 ### Background execution (Phase 9)
 
-Redis with ARQ. Long-running clone, indexing, and agent work leave the HTTP request: `POST /tasks` returns **202** and enqueues one job; `/run` is removed or 410 (see [phases/phase-09.md](phases/phase-09.md)). Clients **short-poll** `GET /tasks/{task_id}` for status and results. Server-Sent Events for task progress are deferred until after Phase 9 (roadmap deferred table).
+Redis with ARQ (implemented). Long-running clone, indexing, and agent work leave the HTTP request: `POST /tasks` returns **202** and enqueues one job; `/run` returns **410 Gone**. Clients **short-poll** `GET /tasks/{task_id}` for status and results. Server-Sent Events for task progress remain deferred (roadmap deferred table).
 
 ### Sandbox (Phase 10)
 
@@ -115,9 +115,9 @@ Langfuse for LLM and agent tracing, OpenTelemetry for application-level traces a
 
 ## Request-to-result data flow
 
-### Phase 6 MVP (implemented)
+### Phase 6 MVP (historical)
 
-Clone and agent are separate HTTP calls. Both are synchronous on the request (debt repaid in Phase 9).
+Through Phase 8, clone and agent were separate HTTP calls, both synchronous on the request. That debt was repaid in Phase 9.
 
 ```mermaid
 sequenceDiagram
@@ -148,9 +148,9 @@ sequenceDiagram
     API-->>User: status and result
 ```
 
-### Phase 9+ (async)
+### Phase 9 (async, current)
 
-When Redis/ARQ lands, `POST /tasks` enqueues a single job; the worker clones, indexes (Phase 8), and runs the agent; clients poll `GET /tasks/{task_id}`. Full `agent_runs` / `tool_calls` persistence is Phase 7.
+`POST /tasks` enqueues a single job; the worker clones, indexes (Phase 8), and runs the agent; clients poll `GET /tasks/{task_id}`.
 
 ```mermaid
 sequenceDiagram
@@ -316,7 +316,7 @@ These are project constraints. They are not defaults to be revisited casually. C
 | Embeddings | OpenAI `text-embedding-3-small` | Not before Phase 8 |
 | Vector store | Pinecone | Not before Phase 8; complements ripgrep rather than replacing it |
 | Database | PostgreSQL (local apt for development; Supabase for production), SQLAlchemy 2.x, Alembic | From Phase 3 |
-| Queue | Redis with ARQ | Not before Phase 9; not Celery |
+| Queue | Redis with ARQ | Phase 9 (implemented); not Celery |
 | Sandbox | Docker | Not before Phase 10; no unrestricted host shell execution ever |
 | Auth | Supabase Auth with JWT, optional | Not before Phase 12; no custom password authentication |
 | Observability | Langfuse and OpenTelemetry | Not before Phase 13 |
