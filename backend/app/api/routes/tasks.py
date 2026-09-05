@@ -46,6 +46,17 @@ def create_task(
     return _to_task_response(task)
 
 
+@router.get("/tasks/{task_id}", response_model=TaskResponse)
+def get_task(
+    task_id: UUID,
+    service: TaskService = Depends(get_task_service),
+) -> TaskResponse:
+    task = service.get(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    return _to_task_response(task)
+
+
 @router.post("/tasks/{task_id}/run", response_model=TaskRunResponse)
 def run_task(
     task_id: UUID,
@@ -97,17 +108,6 @@ def get_task_run(
     return _to_run_detail(run)
 
 
-@router.get("/tasks/{task_id}", response_model=TaskResponse)
-def get_task(
-    task_id: UUID,
-    service: TaskService = Depends(get_task_service),
-) -> TaskResponse:
-    task = service.get(task_id)
-    if task is None:
-        raise HTTPException(status_code=404, detail="Task not found.")
-    return _to_task_response(task)
-
-
 @router.get("/tasks", response_model=list[TaskResponse])
 def list_tasks(
     service: TaskService = Depends(get_task_service),
@@ -149,7 +149,9 @@ def _to_task_run_response(task_id: UUID, agent_result: AgentResult) -> TaskRunRe
     )
 
 
-def _to_run_summary(run: AgentRunRecord, tool_call_count: int) -> AgentRunSummaryResponse:
+def _to_run_summary(
+    run: AgentRunRecord, tool_call_count: int
+) -> AgentRunSummaryResponse:
     return AgentRunSummaryResponse(
         run_id=run.id,
         status=run.status,

@@ -217,13 +217,15 @@ Full specification: [phase-08.md](phases/phase-08.md).
 
 **Objective.** Stop holding an HTTP connection open for the duration of an agent run.
 
-**Concepts.** Job queues, worker processes, at-least-once delivery and idempotency, job state transitions, failure and retry semantics, polling APIs, graceful shutdown.
+**Concepts.** Job queues, worker processes, at-least-once delivery and idempotency, job state transitions, failure and retry semantics, short-polling APIs, graceful shutdown.
 
 **Files.** `backend/app/workers/{main,jobs}.py`, `backend/app/queue/client.py`, updated task routes, `backend/tests/test_job_enqueue.py`, `backend/tests/test_worker_job.py`.
 
 **Dependencies.** `uv add arq`.
 
 **Definition of done.** `POST /tasks` persists the task, enqueues a job, and returns 202 with a task identifier without waiting for the agent; a worker process executes runs and updates status through `pending`, `running`, and a terminal state; `GET /tasks/{task_id}` reflects live status and returns the result when complete; a worker crash leaves the task in a recoverable state rather than stuck in `running` forever; the worker shuts down gracefully without abandoning an in-flight run silently.
+
+**Notes.** Progress channel is **short poll** in Phase 9. **SSE** and **concurrent `process` hardening** (atomic claim / lock / clean re-index) are deferred — see deferred table and [phase-09.md](phases/phase-09.md).
 
 **Commit.** `feat: add background agent execution with Redis and ARQ`
 
@@ -333,7 +335,7 @@ Phase 14 is **not complete** until both 14a and 14b are done.
 
 **Dependencies.** As required; likely `uv add tenacity`.
 
-**Scope.** Rate limiting and request size limits; idempotency on task creation; retry with backoff for transient model, database, and network failures; a sweeper for abandoned workspaces and orphaned containers; per-user and global cost ceilings with alerting; tightened repository URL restrictions; sandbox hardening review; dependency vulnerability scanning in CI; documented incident response for a runaway agent run.
+**Scope.** Rate limiting and request size limits; idempotency on task creation; retry with backoff for transient model, database, and network failures; a sweeper for abandoned workspaces and orphaned containers; per-user and global cost ceilings with alerting; tightened repository URL restrictions; sandbox hardening review; dependency vulnerability scanning in CI; documented incident response for a runaway agent run. Optional if still deferred from Phase 9: task-status SSE; concurrent `process` hardening (atomic pending→running claim, advisory lock, and/or `delete_namespace` before upsert — see deferred table).
 
 **Definition of done.** Every item in [security.md](security.md) is either implemented, explicitly deferred with a reason, or recorded as an accepted risk; load testing establishes the concurrent-run ceiling; a runaway run can be identified and terminated.
 
@@ -346,6 +348,8 @@ Phase 14 is **not complete** until both 14a and 14b are done.
 | Frontend application | Out of scope. Swagger UI is the demonstration surface. No Next.js, no Vercel. |
 | LangChain or LangGraph | Deferred. Trigger condition recorded in [decisions.md](decisions.md). |
 | tree-sitter AST analysis | Deferred. Revisit if chunking or symbol resolution proves insufficient after Phase 8. |
+| Task status SSE | Deferred until after Phase 9 short poll is stable (post–deploy track or Phase 15 polish). Optional `GET /tasks/{task_id}/events`; plain GET remains source of truth. Long poll rejected. See [phase-09.md](phases/phase-09.md). |
+| Concurrent task `process` hardening | Deferred. v1 uses job-id dedupe + skip-if-not-pending. Later: atomic status claim, advisory lock, and/or `delete_namespace` before upsert to prevent double-index / mixed SHA in `task-{task_id}`. See [phase-09.md](phases/phase-09.md). |
 | GitHub App integration, branch and PR creation | Deferred until after Phase 12, since it requires repository credentials and authorization. |
 | Multi-agent orchestration | Out of scope until the single-agent loop is measurably insufficient. |
 | `ruff` and `mypy` | Deferred to the Phase 14 CI pipeline unless requested earlier. |

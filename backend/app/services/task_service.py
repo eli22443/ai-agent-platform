@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -30,6 +33,8 @@ from app.services.agent_run_service import AgentRunService
 from app.services.errors import RetrievalError, TaskNotFound, TaskNotRunnable
 from app.tools.base import ToolContext
 from app.tools.registry import ToolRegistry
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -98,11 +103,7 @@ class TaskService:
         return _to_task(record, repository_record)
 
     def get(self, task_id: UUID) -> Task | None:
-        row = self._session.execute(
-            select(TaskRecord, RepositoryRecord)
-            .join(RepositoryRecord, TaskRecord.repository_id == RepositoryRecord.id)
-            .where(TaskRecord.id == task_id)
-        ).first()
+        row = self._load_row(task_id)
         if row is None:
             return None
         record, repository_record = row
@@ -118,14 +119,63 @@ class TaskService:
             _to_task(record, repository_record) for record, repository_record in rows
         ]
 
+    def process(
+        self, task_id: UUID, llm: OpenAILLMClient, registry: ToolRegistry
+    ) -> AgentResult | None:
+        """Worker entry: clone → index → agent. Commits status transitions itself.
+
+        Returns ``None`` when the job is a no-op (missing / non-pending) or when
+        clone/index failed after marking the task ``failed`` (no ARQ retry).
+        """
+        row = self._load_row(task_id)
+        if row is None:
+            logger.warning("process: task not found task_id=%s", task_id)
+            return None
+
+        task_record, repository_record = row
+        if task_record.status != TaskStatus.PENDING.value:
+            logger.info(
+                "process: skip task_id=%s status=%s",
+                task_id,
+                task_record.status,
+            )
+            return None
+
+        workspace = self._repository_service.workspace_path_for(task_id)
+        if workspace.exists():
+            # At-least-once: clear a partial clone from a prior attempt.
+            remove_workspace(workspace)
+
+        try:
+            prepared = self._repository_service.prepare(
+                repository_record.url, task_id
+            )
+        except CloneError as exc:
+            self._mark_failed(task_record, str(exc))
+            remove_workspace(workspace)
+            self._session.commit()
+            return None
+
+        repository_record.default_branch = prepared.current_branch
+        repository_record.last_commit_sha = prepared.head_sha
+        self._session.flush()
+
+        try:
+            result = self._index_and_run(
+                task_record, repository_record, llm, registry
+            )
+        except RetrievalError as exc:
+            self._mark_failed(task_record, str(exc))
+            self._session.commit()
+            return None
+
+        self._session.commit()
+        return result
+
     def run(
         self, task_id: UUID, llm: OpenAILLMClient, registry: ToolRegistry
     ) -> AgentResult:
-        row = self._session.execute(
-            select(TaskRecord, RepositoryRecord)
-            .join(RepositoryRecord, TaskRecord.repository_id == RepositoryRecord.id)
-            .where(TaskRecord.id == task_id)
-        ).first()
+        row = self._load_row(task_id)
         if row is None:
             raise TaskNotFound()
 
@@ -138,8 +188,37 @@ class TaskService:
         if not workspace_root.is_dir():
             raise TaskNotRunnable("workspace missing or incomplete")
 
+        return self._index_and_run(task_record, repository_record, llm, registry)
+
+    def _load_row(
+        self, task_id: UUID
+    ) -> tuple[TaskRecord, RepositoryRecord] | None:
+        row = self._session.execute(
+            select(TaskRecord, RepositoryRecord)
+            .join(RepositoryRecord, TaskRecord.repository_id == RepositoryRecord.id)
+            .where(TaskRecord.id == task_id)
+        ).first()
+        if row is None:
+            return None
+        return row[0], row[1]
+
+    def _mark_failed(self, task_record: TaskRecord, error: str) -> None:
+        task_record.status = TaskStatus.FAILED.value
+        task_record.error = error
+        task_record.result = None
+        task_record.updated_at = datetime.now(UTC)
+        self._session.flush()
+
+    def _index_and_run(
+        self,
+        task_record: TaskRecord,
+        repository_record: RepositoryRecord,
+        llm: OpenAILLMClient,
+        registry: ToolRegistry,
+    ) -> AgentResult:
+        task_id = task_record.id
         settings = get_settings()
-        resolved_root = workspace_root.resolve()
+        resolved_root = self._repository_service.workspace_path_for(task_id).resolve()
 
         if settings.retrieval_index_enabled:
             try:
@@ -162,7 +241,6 @@ class TaskService:
         task_record.updated_at = now
         run_record = self._agent_run_service.begin(task_id, model=settings.openai_model)
         # Commit early so other DB clients can observe running mid-flight.
-        # Final completed/failed still commits via get_db after the route returns.
         self._session.commit()
 
         agent_result = run_agent(
@@ -190,7 +268,6 @@ class TaskService:
             task_record.error = agent_result.error
             task_record.result = None
         else:
-            # Success and limit-halt both land as completed.
             task_record.status = TaskStatus.COMPLETED.value
             answer = agent_result.answer
             if agent_result.halt_reason:

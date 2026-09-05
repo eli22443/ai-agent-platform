@@ -285,6 +285,7 @@ Vectors are namespaced per task workspace (`task-{task_id}`), not per repository
 | Synchronous clone on `POST /tasks` | Phase 4 | HTTP request stays open for `git clone`; timeouts feel like API failures | Phase 9 |
 | Synchronous agent execution on `POST /tasks/{id}/run` | Phase 6 | Long-held HTTP connections; pairs with sync clone debt. Early commit of `running` helps DB visibility mid-run but does not free the HTTP request | Phase 9 |
 | Sync indexing before agent on worker | Phase 8 | Slow first run per task when index is cold | Background indexer (post-Phase 9 optimization) |
+| Concurrent workers racing the same pending task | Phase 9 | Two processes may both see `pending`, double-clone/index into `task-{task_id}`; retry can mix SHAs | Atomic status claim, advisory lock, and/or `delete_namespace` before upsert (deferred; see [phases/phase-09.md](phases/phase-09.md)) |
 | Ephemeral workspaces on Fargate | Deploy track (D23) | Clones lost on ECS task restart | EFS or worker volume (Phase 14b/15) |
 | No authentication | Phase 1 | Anyone with network access can invoke the API | Phase 12, or on public exposure |
 | Public repositories only | Phase 4 | Cannot handle private repositories | Phase 12 |

@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     retrieval_search_top_k: int = 10
     retrieval_index_enabled: bool = True
 
+    # Phase 9 — background execution (ARQ + Redis)
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    arq_job_timeout_seconds: int = 600
+    stuck_task_threshold_minutes: int = 30
+
     @field_validator("git_allowed_hosts", mode="before")
     @classmethod
     def parse_git_allowed_hosts(cls, value: object) -> object:

@@ -40,6 +40,9 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("RETRIEVAL_EMBED_BATCH_SIZE", raising=False)
     monkeypatch.delenv("RETRIEVAL_SEARCH_TOP_K", raising=False)
     monkeypatch.delenv("RETRIEVAL_INDEX_ENABLED", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("ARQ_JOB_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("STUCK_TASK_THRESHOLD_MINUTES", raising=False)
 
     settings = Settings(database_url=TEST_DATABASE_URL, _env_file=None)  # type: ignore[call-arg]
 
@@ -73,6 +76,9 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch):
     assert settings.retrieval_embed_batch_size == 64
     assert settings.retrieval_search_top_k == 10
     assert settings.retrieval_index_enabled is True
+    assert settings.redis_url == "redis://127.0.0.1:6379/0"
+    assert settings.arq_job_timeout_seconds == 600
+    assert settings.stuck_task_threshold_minutes == 30
 
 
 def test_settings_from_environment(monkeypatch: pytest.MonkeyPatch):
@@ -104,6 +110,9 @@ def test_settings_from_environment(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("RETRIEVAL_EMBED_BATCH_SIZE", "32")
     monkeypatch.setenv("RETRIEVAL_SEARCH_TOP_K", "5")
     monkeypatch.setenv("RETRIEVAL_INDEX_ENABLED", "false")
+    monkeypatch.setenv("REDIS_URL", "redis://cache:6379/1")
+    monkeypatch.setenv("ARQ_JOB_TIMEOUT_SECONDS", "900")
+    monkeypatch.setenv("STUCK_TASK_THRESHOLD_MINUTES", "45")
 
     settings = Settings(database_url=TEST_DATABASE_URL, _env_file=None)  # type: ignore[call-arg]
 
@@ -135,6 +144,9 @@ def test_settings_from_environment(monkeypatch: pytest.MonkeyPatch):
     assert settings.retrieval_embed_batch_size == 32
     assert settings.retrieval_search_top_k == 5
     assert settings.retrieval_index_enabled is False
+    assert settings.redis_url == "redis://cache:6379/1"
+    assert settings.arq_job_timeout_seconds == 900
+    assert settings.stuck_task_threshold_minutes == 45
 
 
 def test_settings_rejects_invalid_env(monkeypatch: pytest.MonkeyPatch):

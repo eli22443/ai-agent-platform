@@ -103,7 +103,7 @@ Two complementary tracks, not competing ones. Lexical search with ripgrep arrive
 
 ### Background execution (Phase 9)
 
-Redis with ARQ. Long-running clone and/or agent work leaves the HTTP request. Exact enqueue shape (from create, from `/run`, or both) is decided in Phase 9; D22's separate-run resource can become an enqueue trigger. Clients poll `GET /tasks/{task_id}` for status and results.
+Redis with ARQ. Long-running clone, indexing, and agent work leave the HTTP request: `POST /tasks` returns **202** and enqueues one job; `/run` is removed or 410 (see [phases/phase-09.md](phases/phase-09.md)). Clients **short-poll** `GET /tasks/{task_id}` for status and results. Server-Sent Events for task progress are deferred until after Phase 9 (roadmap deferred table).
 
 ### Sandbox (Phase 10)
 
