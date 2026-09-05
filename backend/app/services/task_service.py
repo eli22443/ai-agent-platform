@@ -14,6 +14,7 @@ from app.agent.types import AgentResult
 from app.config import get_settings
 from app.database.models import RepositoryRecord, TaskRecord
 from app.llm import OpenAILLMClient
+from app.queue.client import enqueue_process_task
 from app.repositories.errors import CloneError
 from app.repositories.service import RepositoryService
 from app.repositories.workspace import remove as remove_workspace
@@ -65,6 +66,7 @@ class TaskService:
         self._store = store
 
     def create(self, repository_url: str, instruction: str) -> Task:
+        """Validate, persist ``pending``, enqueue worker job. Does not clone."""
         self._repository_service.validate_url(repository_url)
 
         repository_record = self._session.scalars(
@@ -85,21 +87,10 @@ class TaskService:
         )
         self._session.add(record)
         self._session.flush()
+        # Commit before enqueue so the worker can load the row immediately.
+        self._session.commit()
 
-        try:
-            prepared = self._repository_service.prepare(repository_url, record.id)
-        except CloneError as exc:
-            record.status = TaskStatus.FAILED.value
-            record.error = str(exc)
-            record.updated_at = datetime.now(UTC)
-            self._session.flush()
-            remove_workspace(self._repository_service.workspace_path_for(record.id))
-            self._session.commit()
-            raise
-
-        repository_record.default_branch = prepared.current_branch
-        repository_record.last_commit_sha = prepared.head_sha
-        self._session.flush()
+        enqueue_process_task(record.id)
         return _to_task(record, repository_record)
 
     def get(self, task_id: UUID) -> Task | None:
@@ -175,6 +166,10 @@ class TaskService:
     def run(
         self, task_id: UUID, llm: OpenAILLMClient, registry: ToolRegistry
     ) -> AgentResult:
+        """HTTP ``/run`` path (removed in Phase 9 step 5). Requires an existing workspace.
+
+        Prefer ``process`` for the worker (clone + index + agent).
+        """
         row = self._load_row(task_id)
         if row is None:
             raise TaskNotFound()

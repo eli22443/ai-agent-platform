@@ -12,7 +12,8 @@ from app.api.dependencies import (
 )
 from app.database.models import AgentRunRecord, ToolCallRecord
 from app.llm.client import OpenAILLMClient
-from app.repositories.errors import CloneError, InvalidRepositoryUrl
+from app.repositories.errors import InvalidRepositoryUrl
+from app.queue.client import QueueError
 from app.schemas.agent_run import (
     AgentRunDetailResponse,
     AgentRunSummaryResponse,
@@ -41,8 +42,8 @@ def create_task(
         task = service.create(str(payload.repository_url), payload.instruction)
     except InvalidRepositoryUrl:
         raise HTTPException(status_code=400, detail="Repository URL is not allowed.")
-    except CloneError:
-        raise HTTPException(status_code=502, detail="Failed to clone repository.")
+    except QueueError:
+        raise HTTPException(status_code=503, detail="Failed to enqueue background job.")
     return _to_task_response(task)
 
 

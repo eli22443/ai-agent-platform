@@ -105,6 +105,15 @@ def _truncate(engine: Engine) -> None:
         connection.commit()
 
 
+@pytest.fixture(autouse=True)
+def mock_enqueue_process_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Avoid Redis in unit/API tests; Step 6 asserts real enqueue separately."""
+    monkeypatch.setattr(
+        "app.services.task_service.enqueue_process_task",
+        lambda _task_id: None,
+    )
+
+
 @pytest.fixture(scope="session")
 def apply_migrations() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))

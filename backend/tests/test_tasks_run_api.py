@@ -1,8 +1,7 @@
-from pathlib import Path
+from uuid import UUID
 
-from app.api.dependencies import get_llm_client
+from app.api.dependencies import get_llm_client, get_repository_service
 from app.llm import LLMError
-from app.repositories.workspace import remove as remove_workspace
 from tests.llm_fakes import FakeLLMClient, text_response, tool_call_response
 
 VALID_PAYLOAD = {
@@ -21,12 +20,34 @@ def _clear_llm_override(client) -> None:
     client.app.dependency_overrides.pop(get_llm_client, None)
 
 
+def _prepare_workspace(client, task_id: str, repository_url: str) -> None:
+    """Clone into the task workspace so legacy ``/run`` can execute (pre–step 5)."""
+    repo_service = client.app.dependency_overrides[get_repository_service]()
+    prepared = repo_service.prepare(repository_url, UUID(task_id))
+    # Mirror worker: stash HEAD metadata for the agent prompt.
+    from app.database.session import SessionLocal
+    from app.database.models import RepositoryRecord, TaskRecord
+
+    session = SessionLocal()
+    try:
+        task = session.get(TaskRecord, UUID(task_id))
+        assert task is not None
+        repo = session.get(RepositoryRecord, task.repository_id)
+        assert repo is not None
+        repo.default_branch = prepared.current_branch
+        repo.last_commit_sha = prepared.head_sha
+        session.commit()
+    finally:
+        session.close()
+
+
 def test_run_returns_200_with_answer(client):
     fake = _override_llm(client, [text_response("Session manages cookies and headers.")])
     try:
         created = client.post("/tasks", json=VALID_PAYLOAD)
         assert created.status_code == 201
         task_id = created.json()["task_id"]
+        _prepare_workspace(client, task_id, VALID_PAYLOAD["repository_url"])
 
         response = client.post(f"/tasks/{task_id}/run")
 
@@ -67,6 +88,7 @@ def test_run_with_tool_call_then_answer(client):
     )
     try:
         task_id = client.post("/tasks", json=VALID_PAYLOAD).json()["task_id"]
+        _prepare_workspace(client, task_id, VALID_PAYLOAD["repository_url"])
         response = client.post(f"/tasks/{task_id}/run")
 
         assert response.status_code == 200
@@ -98,6 +120,7 @@ def test_run_again_returns_409(client):
     _override_llm(client, [text_response("done")])
     try:
         task_id = client.post("/tasks", json=VALID_PAYLOAD).json()["task_id"]
+        _prepare_workspace(client, task_id, VALID_PAYLOAD["repository_url"])
         first = client.post(f"/tasks/{task_id}/run")
         assert first.status_code == 200
 
@@ -124,13 +147,12 @@ def test_run_unknown_task_returns_404(client):
         _clear_llm_override(client)
 
 
-def test_run_missing_workspace_returns_409(client, tmp_path: Path):
+def test_run_missing_workspace_returns_409(client):
     _override_llm(client, [text_response("unused")])
     try:
         created = client.post("/tasks", json=VALID_PAYLOAD)
         task_id = created.json()["task_id"]
-        workspace = tmp_path / "workspaces" / task_id
-        remove_workspace(workspace)
+        # create no longer clones — workspace is absent without prepare.
 
         response = client.post(f"/tasks/{task_id}/run")
         assert response.status_code == 409
@@ -145,6 +167,7 @@ def test_run_llm_failure_returns_failed_status(client):
     _override_llm(client, [LLMError("OpenAI request failed.")])
     try:
         task_id = client.post("/tasks", json=VALID_PAYLOAD).json()["task_id"]
+        _prepare_workspace(client, task_id, VALID_PAYLOAD["repository_url"])
         response = client.post(f"/tasks/{task_id}/run")
 
         assert response.status_code == 200
@@ -163,7 +186,6 @@ def test_run_llm_failure_returns_failed_status(client):
 
 def test_run_retrieval_failure_returns_502(client, monkeypatch):
     from app.config import get_settings
-    from app.retrieval.embeddings import EmbeddingError
     from app.services.errors import RetrievalError
     from tests.llm_fakes import text_response
 
@@ -179,6 +201,7 @@ def test_run_retrieval_failure_returns_502(client, monkeypatch):
     )
     try:
         task_id = client.post("/tasks", json=VALID_PAYLOAD).json()["task_id"]
+        _prepare_workspace(client, task_id, VALID_PAYLOAD["repository_url"])
         _override_llm(client, [text_response("unused")])
         response = client.post(f"/tasks/{task_id}/run")
 

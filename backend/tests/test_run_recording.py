@@ -43,7 +43,7 @@ def test_completed_run_persists_tokens_and_no_tool_calls(
     db_session: Session, task_service: TaskService
 ):
     task = task_service.create(REQUESTS_URL, INSTRUCTION)
-    result = task_service.run(
+    result = task_service.process(
         task.id,
         FakeLLMClient([text_response("Session handles cookies.")]),
         build_read_only_registry(),
@@ -75,7 +75,7 @@ def test_tool_calls_persisted_in_order(
     db_session: Session, task_service: TaskService
 ):
     task = task_service.create(REQUESTS_URL, INSTRUCTION)
-    result = task_service.run(
+    result = task_service.process(
         task.id,
         FakeLLMClient(
             [
@@ -115,7 +115,7 @@ def test_halted_run_persists_status_and_tool_calls(
     get_settings.cache_clear()
     try:
         task = task_service.create(REQUESTS_URL, INSTRUCTION)
-        result = task_service.run(
+        result = task_service.process(
             task.id,
             FakeLLMClient(
                 [
@@ -146,7 +146,7 @@ def test_failed_run_persists_error(
     db_session: Session, task_service: TaskService
 ):
     task = task_service.create(REQUESTS_URL, INSTRUCTION)
-    result = task_service.run(
+    result = task_service.process(
         task.id,
         FakeLLMClient([LLMError("OpenAI request failed.")]),
         build_read_only_registry(),
@@ -166,7 +166,7 @@ def test_deduplicated_tool_call_flag(
 ):
     task = task_service.create(REQUESTS_URL, INSTRUCTION)
     args = '{"path": "."}'
-    result = task_service.run(
+    result = task_service.process(
         task.id,
         FakeLLMClient(
             [
@@ -196,7 +196,7 @@ def test_failed_tool_call_stores_error(
     db_session: Session, task_service: TaskService
 ):
     task = task_service.create(REQUESTS_URL, INSTRUCTION)
-    result = task_service.run(
+    result = task_service.process(
         task.id,
         FakeLLMClient(
             [
@@ -216,6 +216,7 @@ def test_failed_tool_call_stores_error(
 
 def test_get_runs_api(client):
     from app.api.dependencies import get_llm_client
+    from tests.test_tasks_run_api import _prepare_workspace
 
     fake = FakeLLMClient(
         [
@@ -229,6 +230,7 @@ def test_get_runs_api(client):
             "/tasks",
             json={"repository_url": REQUESTS_URL, "instruction": INSTRUCTION},
         ).json()["task_id"]
+        _prepare_workspace(client, task_id, REQUESTS_URL)
 
         empty = client.get(f"/tasks/{task_id}/runs")
         assert empty.status_code == 200

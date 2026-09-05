@@ -1,3 +1,5 @@
+from pathlib import Path
+
 VALID_PAYLOAD = {
     "repository_url": "https://github.com/psf/requests",
     "instruction": "Explain how the retry logic works.",
@@ -180,17 +182,25 @@ def test_create_task_rejects_unknown_host(client):
     assert body["error"]["request_id"]
 
 
-def test_create_task_clone_error_returns_502(clone_failing_client):
-    response = clone_failing_client.post("/tasks", json=VALID_PAYLOAD)
+def test_create_task_does_not_clone(client, tmp_path: Path):
+    response = client.post("/tasks", json=VALID_PAYLOAD)
 
-    assert response.status_code == 502
+    assert response.status_code == 201
+    task_id = response.json()["task_id"]
+    assert not (tmp_path / "workspaces" / task_id).exists()
+
+
+def test_create_task_enqueue_failure_returns_503(client, monkeypatch):
+    from app.queue.client import QueueError
+
+    monkeypatch.setattr(
+        "app.services.task_service.enqueue_process_task",
+        lambda _task_id: (_ for _ in ()).throw(QueueError("Failed to enqueue background job.")),
+    )
+
+    response = client.post("/tasks", json=VALID_PAYLOAD)
+
+    assert response.status_code == 503
     body = response.json()
-    assert "detail" not in body
-    assert body["error"]["message"] == "Failed to clone repository."
+    assert body["error"]["message"] == "Failed to enqueue background job."
     assert body["error"]["request_id"]
-
-    listed = clone_failing_client.get("/tasks")
-    assert listed.status_code == 200
-    tasks = listed.json()
-    assert len(tasks) == 1
-    assert tasks[0]["status"] == "failed"
