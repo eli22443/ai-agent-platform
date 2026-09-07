@@ -2,7 +2,7 @@
 
 This directory holds AWS deployment notes and (eventually) infrastructure definitions for the **deploy track** — minimal ECS deployment after Phases 8–9.
 
-**Canonical guide:** [docs/deploy-track.md](../docs/deploy-track.md)
+**Canonical guide:** [docs/deploy-track.md](../../docs/deploy-track.md)
 
 ## Status
 
@@ -16,7 +16,7 @@ Documentation only. No Terraform, CDK, or CloudFormation in v1. First deploy may
 | ECS Fargate | `api` and `worker` services |
 | Application Load Balancer | HTTPS, health checks on API |
 | ElastiCache Redis | ARQ job queue |
-| Secrets Manager | `DATABASE_URL`, `OPENAI_*`, `PINECONE_*`, etc. |
+| Secrets Manager | `DATABASE_URL`, `REDIS_URL`, `OPENAI_*`, `PINECONE_*`, etc. |
 | CloudWatch Logs | API and worker logs |
 | Security groups | ALB → API; worker outbound only |
 

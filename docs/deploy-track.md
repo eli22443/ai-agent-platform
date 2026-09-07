@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document is the canonical guide for deploying the AI Agent Platform to AWS **after Phase 8 (semantic retrieval) and Phase 9 (background execution) are complete in code**. It encodes an intentional reordering of the roadmap: learn ECS, workers, and Redis in production before Phase 10 (Docker sandbox).
+This document is the canonical guide for deploying the AI Agent Platform to AWS. **Phases 8–9 are complete in code;** this track is the active next step. It encodes an intentional reordering of the roadmap: learn ECS, workers, and Redis in production before Phase 10 (Docker sandbox).
 
 Rationale:
 
@@ -18,15 +18,15 @@ See [decisions.md](decisions.md) D23–D26 for settled choices.
 | Requirement | Status |
 | --- | --- |
 | Phases 1–7 implemented | Complete |
-| Phase 8 — semantic retrieval, `semantic_search` tool | Required before cloud |
-| Phase 9 — ARQ worker, Redis, `POST /tasks` → 202, polling | Required before cloud |
+| Phase 8 — semantic retrieval, `semantic_search` tool | Complete |
+| Phase 9 — ARQ worker, Redis, `POST /tasks` → 202, polling | Complete |
 | Supabase project (or other managed Postgres) | For cloud `DATABASE_URL` |
-| Pinecone index | Phase 8 |
-| OpenAI API key | Phase 6+ |
+| Pinecone index | Needed for cloud indexing |
+| OpenAI API key | Needed for agent + embeddings |
 | AWS account | For ECS, ALB, ElastiCache, ECR, Secrets Manager |
 | GitHub repo with Actions (optional) | For CI build → ECR when O1 blocks local Docker |
 
-Do **not** start the deploy track until Phase 8 and Phase 9 code is merged and tested locally.
+Phases 8–9 are done. Start at **step B** (Supabase).
 
 ## What stays external
 
@@ -68,9 +68,9 @@ flowchart TD
 
 | Environment | `DATABASE_URL` | Redis | Notes |
 | --- | --- | --- | --- |
-| Local dev (D19) | apt Postgres `@127.0.0.1` | optional until Phase 9 | Unchanged for day-to-day dev |
+| Local dev (D19) | apt Postgres `@127.0.0.1` | Required (`REDIS_URL`) for enqueue + worker | Unchanged Postgres; Redis needed for async flow |
 | Docker Compose | Supabase **or** compose Postgres | `redis://redis:6379/0` | Parity testing before AWS |
-| AWS (deploy track) | Supabase direct URL via Secrets Manager | ElastiCache endpoint | `?sslmode=require` on Postgres URL |
+| AWS (deploy track) | Supabase direct URL via Secrets Manager | ElastiCache endpoint (`REDIS_URL`) | `?sslmode=require` on Postgres URL |
 
 Local development can keep apt Postgres (D19). Cloud uses Supabase (D6, D24) with **no application code changes** — only `DATABASE_URL`.
 
@@ -78,11 +78,11 @@ Local development can keep apt Postgres (D19). Cloud uses Supabase (D6, D24) wit
 
 Implementation order for the deploy track (reference only; details land in phase specs and infrastructure docs):
 
-### A — Complete Phase 8 and Phase 9 locally
+### A — Phase 8 and Phase 9 locally — **done**
 
 - Phase 8: [phases/phase-08.md](phases/phase-08.md) — chunking, embeddings, Pinecone, `semantic_search`.
 - Phase 9: [phases/phase-09.md](phases/phase-09.md) — ARQ, Redis, `POST /tasks` returns **202**, worker runs clone + `ensure_indexed` + agent; clients poll `GET /tasks/{task_id}`.
-- All tests pass with `uv run pytest`; manual async flow verified locally with Redis.
+- Worker entry: `uv run arq app.workers.main.WorkerSettings`.
 
 ### B — Supabase provision and migrations
 
@@ -101,7 +101,7 @@ Implementation order for the deploy track (reference only; details land in phase
 - `backend/Dockerfile`: Python 3.12, `uv`, install deps from lockfile; include **git** and **ripgrep** in the image.
 - `docker-compose.yml`: services `api`, `worker`, `redis`; optional local Postgres or point `DATABASE_URL` at Supabase.
 - API command: `uv run uvicorn app.main:app --host 0.0.0.0 --port 8000`
-- Worker command: `uv run arq app.workers.main.WorkerSettings` (exact module per Phase 9 spec).
+- Worker command: `uv run arq app.workers.main.WorkerSettings`
 - **Do not** put Postgres inside the backend image (D24).
 
 **O1 workaround:** if Docker is unreachable in WSL, build and push images via GitHub Actions → ECR; deploy from ECR to ECS.
@@ -114,7 +114,7 @@ Implementation order for the deploy track (reference only; details land in phase
 | ECS Fargate | `api` and `worker` services (smallest CPU/memory for learning) |
 | Application Load Balancer | HTTPS termination, health checks on API |
 | ElastiCache Redis | ARQ queue |
-| Secrets Manager | `DATABASE_URL`, `OPENAI_API_KEY`, `PINECONE_*`, etc. |
+| Secrets Manager | `DATABASE_URL`, `REDIS_URL`, `OPENAI_API_KEY`, `PINECONE_*`, etc. |
 | CloudWatch | Logs from both services |
 | Security groups | ALB → API only; worker has **no inbound** ports; DB/Redis from task SGs only |
 
@@ -178,7 +178,7 @@ Full posture: [security.md](security.md#first-cloud-deploy-posture). Summary:
 After deploy track step D, confirm:
 
 - [ ] `GET /health` via ALB returns `{"status":"ok"}`.
-- [ ] `POST /tasks` with a public GitHub URL returns **202** with `task_id` and `status: pending` (or `running` once worker picks up).
+- [ ] `POST /tasks` with a public GitHub URL returns **202** and a `TaskResponse` with `task_id` and `status: pending` (or `running` once worker picks up).
 - [ ] `GET /tasks/{task_id}` eventually shows `completed` with a non-empty `result`.
 - [ ] Supabase `tasks` row exists for the task; `agent_runs` and `tool_calls` rows exist (Phase 7).
 - [ ] CloudWatch shows worker logs: clone, indexing (Phase 8), agent iterations.
