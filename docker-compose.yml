@@ -1,0 +1,39 @@
+# Local parity for deploy track step C (D24: Postgres stays external / Supabase).
+# Same image for api + worker; override command for the worker.
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: ai-agent-platform:local
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      WORKSPACES_ROOT: /app/.workspaces
+      APP_ENV: local
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: ai-agent-platform:local
+    command: ["uv", "run", "arq", "app.workers.main.WorkerSettings"]
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      WORKSPACES_ROOT: /app/.workspaces
+      APP_ENV: local
+    depends_on:
+      - redis
