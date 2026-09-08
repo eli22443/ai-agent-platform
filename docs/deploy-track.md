@@ -96,13 +96,23 @@ Implementation order for the deploy track (reference only; details land in phase
    ```
 5. Store the same URL in AWS Secrets Manager for ECS tasks (never commit it).
 
-### C — Containerize (app image, not sandbox)
+### C — Containerize (app image, not sandbox) — **files in place**
 
-- `backend/Dockerfile`: Python 3.12, `uv`, install deps from lockfile; include **git** and **ripgrep** in the image.
-- `docker-compose.yml`: services `api`, `worker`, `redis`; optional local Postgres or point `DATABASE_URL` at Supabase.
+- `backend/Dockerfile`: Python 3.12, `uv`, install deps from lockfile; include **git** and **ripgrep** in the image; runs as non-root `appuser`.
+- `backend/.dockerignore`: excludes `.venv`, `.env`, workspaces, tests.
+- `docker-compose.yml` (repo root): services `api`, `worker`, `redis`; point `DATABASE_URL` at Supabase via `backend/.env` (no Postgres in the app image — D24).
 - API command: `uv run uvicorn app.main:app --host 0.0.0.0 --port 8000`
 - Worker command: `uv run arq app.workers.main.WorkerSettings`
-- **Do not** put Postgres inside the backend image (D24).
+- Compose sets `REDIS_URL=redis://redis:6379/0` for both app services.
+
+Verify locally (Docker Desktop + WSL integration required):
+
+```bash
+docker compose build
+docker compose up
+# GET http://localhost:8000/health
+# POST /tasks → 202; worker processes via Redis + Supabase
+```
 
 **O1 workaround:** if Docker is unreachable in WSL, build and push images via GitHub Actions → ECR; deploy from ECR to ECS.
 

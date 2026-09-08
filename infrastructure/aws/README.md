@@ -27,7 +27,7 @@ Documentation only. No Terraform, CDK, or CloudFormation in v1. First deploy may
 TBD when implementing 14a. Follow [deploy-track.md](../docs/deploy-track.md) steps B–E:
 
 1. Supabase project + `alembic upgrade head`
-2. Build and push image to ECR (`backend/Dockerfile`)
+2. Build and push image to ECR (`backend/Dockerfile`; local parity via root `docker-compose.yml`)
 3. Create ElastiCache, ECS cluster, task definitions, services
 4. Configure ALB → API target group
 5. Run [verification checklist](../docs/deploy-track.md#verification-checklist)

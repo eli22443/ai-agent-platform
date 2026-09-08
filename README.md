@@ -180,7 +180,8 @@ Three levels, described in [docs/evaluation.md](docs/evaluation.md): unit tests 
 ```text
 ai-agent-platform/
 ├── docs/                  Architecture, design, security, evaluation, roadmap, deploy-track
-├── backend/               FastAPI application and tests (from Phase 1)
+├── backend/               FastAPI application, tests, Dockerfile (deploy track)
+├── docker-compose.yml     Local api + worker + redis (deploy track step C)
 ├── infrastructure/        Docker sandbox (Phase 10) and AWS runbook (deploy track)
 └── .github/workflows/     CI and deployment (Phase 14b; 14a may add ECR build only)
 ```
