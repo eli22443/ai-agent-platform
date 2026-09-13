@@ -2,223 +2,176 @@
 
 ## Purpose
 
-This document is the canonical guide for deploying the AI Agent Platform to AWS. **Phases 8–9 are complete in code;** this track is the active next step. It encodes an intentional reordering of the roadmap: learn ECS, workers, and Redis in production before Phase 10 (Docker sandbox).
+Canonical guide for deploying the AI Agent Platform to AWS after Phases 8–9. Intentional roadmap reorder: learn ECS, workers, and Redis in production before Phase 10 (Docker sandbox).
+
+**Status: 14a complete.** Steps A–E are done (code, Supabase, containerize, AWS Console deploy, E2E). Live inventory and runbook: [infrastructure/aws/README.md](../infrastructure/aws/README.md). Next: Phase 10 (sandbox) and/or **14b** hardening.
 
 Rationale:
 
-- Phase 9 makes the API return quickly (`202`) while a worker runs clone, indexing, and the agent loop — the right shape for cloud deployment.
-- The read-only agent (Phases 1–9) is deployable without Phase 10; sandbox is required only for `run_command` / `run_tests`.
-- O1 (Docker unreachable in WSL) blocks Phase 10 locally anyway; the deploy track does not depend on fixing O1.
-- A minimal AWS deploy overlaps with Phase 14; doing it early is **14a** (see [roadmap.md](roadmap.md)). Full Phase 14 hardening (**14b**) follows after the first successful E2E cloud run.
+- Phase 9 returns `202` while a worker runs clone, indexing, and the agent loop — the right shape for cloud.
+- The read-only agent (Phases 1–9) deploys without Phase 10; sandbox is only for `run_command` / `run_tests`.
+- O1 (Docker in WSL) blocked Phase 10 locally; the deploy track did not depend on fixing O1 for app images.
+- Minimal AWS deploy is **14a** (D23, D26). Full Phase 14 (**14b**) remains after this baseline.
 
-See [decisions.md](decisions.md) D23–D26 for settled choices.
+See [decisions.md](decisions.md) D23–D27.
 
 ## Prerequisites
 
 | Requirement | Status |
 | --- | --- |
-| Phases 1–7 implemented | Complete |
-| Phase 8 — semantic retrieval, `semantic_search` tool | Complete |
-| Phase 9 — ARQ worker, Redis, `POST /tasks` → 202, polling | Complete |
-| Supabase project (or other managed Postgres) | For cloud `DATABASE_URL` |
-| Pinecone index | Needed for cloud indexing |
-| OpenAI API key | Needed for agent + embeddings |
-| AWS account | For ECS, ALB, ElastiCache, ECR, Secrets Manager |
-| GitHub repo with Actions (optional) | For CI build → ECR when O1 blocks local Docker |
-
-Phases 8–9 are done. Start at **step B** (Supabase).
+| Phases 1–9 | Complete |
+| Supabase + migrations | Complete (cloud `DATABASE_URL`) |
+| Pinecone index + OpenAI key | Complete |
+| Container image (`backend/Dockerfile`, compose) | Complete |
+| AWS (`eu-north-1`) — ECR, ECS, ALB, ElastiCache, Secrets, VPC+NAT | Complete (14a) |
 
 ## What stays external
 
-These services are **not** replaced with AWS equivalents in the first deploy:
-
 | Service | Role |
 | --- | --- |
-| **Supabase** | Managed PostgreSQL (`DATABASE_URL` only; no Supabase Auth until Phase 12) |
+| **Supabase** | Managed PostgreSQL (`DATABASE_URL` only; no Auth until Phase 12) |
 | **OpenAI** | LLM and embeddings |
 | **Pinecone** | Vector store (Phase 8) |
 | **GitHub** | Public repository clones at runtime |
 
-**Not in v1:** RDS (deferred per D24), self-hosted Postgres in the app container, Langfuse (Phase 13).
+**Not in 14a:** RDS (D24), Postgres in the app image, Langfuse (Phase 13).
 
-## Target architecture
+## Target architecture (as deployed)
 
 ```mermaid
 flowchart TD
-    Client["Client / Swagger UI"] -->|HTTPS| ALB["Application Load Balancer"]
-    ALB --> API["ECS Fargate: API service"]
-    API -->|enqueue job| Redis[("ElastiCache Redis")]
-    API -->|read/write| Supabase[("Supabase PostgreSQL")]
-  Redis --> Worker["ECS Fargate: Worker service"]
+    Client["Client / Swagger UI"] -->|HTTP :80| ALB["ALB public subnets"]
+    ALB -->|:8000| API["ECS Fargate API private"]
+    API -->|enqueue| Redis[("ElastiCache Redis")]
+    API --> Supabase[("Supabase PostgreSQL")]
+    Redis --> Worker["ECS Fargate Worker private"]
     Worker -->|clone + index + agent| WS["Ephemeral workspace disk"]
     Worker --> Supabase
     Worker --> OpenAI["OpenAI API"]
     Worker --> Pinecone["Pinecone"]
     Worker --> GitHub["GitHub HTTPS clone"]
+    API --> NAT["Regional NAT Gateway"]
+    Worker --> NAT
+    NAT --> Internet["Internet"]
     API --> CW["CloudWatch Logs"]
     Worker --> CW
 ```
 
-- **Two ECS services** from the **same container image**: API runs Uvicorn; worker runs ARQ with a different command.
-- **Redis** is ElastiCache in AWS; local Redis or compose Redis for parity testing.
-- **Postgres** is Supabase over TLS; credentials in AWS Secrets Manager, injected as env vars at task start.
-- **Workspaces** live on ephemeral Fargate task disk (accepted debt; EFS deferred).
+- **Dedicated VPC** `ai-agent-vpc` (`10.20.0.0/16`) in **`eu-north-1`** — not the default VPC (D27).
+- **Two ECS services**, same ECR image: API = Uvicorn; worker = ARQ command override.
+- Tasks in **private** subnets, **Public IP OFF**; egress via **NAT Gateway**.
+- **Redis** = ElastiCache; **Postgres** = Supabase via Secrets Manager.
+- Workspaces on ephemeral Fargate disk (accepted debt; EFS deferred).
+
+Details and resource names: [infrastructure/aws/README.md](../infrastructure/aws/README.md).
 
 ## Environment matrix
 
 | Environment | `DATABASE_URL` | Redis | Notes |
 | --- | --- | --- | --- |
-| Local dev (D19) | apt Postgres `@127.0.0.1` | Required (`REDIS_URL`) for enqueue + worker | Unchanged Postgres; Redis needed for async flow |
-| Docker Compose | Supabase **or** compose Postgres | `redis://redis:6379/0` | Parity testing before AWS |
-| AWS (deploy track) | Supabase direct URL via Secrets Manager | ElastiCache endpoint (`REDIS_URL`) | `?sslmode=require` on Postgres URL |
-
-Local development can keep apt Postgres (D19). Cloud uses Supabase (D6, D24) with **no application code changes** — only `DATABASE_URL`.
+| Local / host | apt Postgres or Supabase | `REDIS_URL` required for enqueue + worker | Day-to-day may use Supabase |
+| Docker Compose | Supabase via `backend/.env` | `redis://redis:6379/0` | Local parity before AWS |
+| AWS (14a) | Supabase via Secrets Manager | ElastiCache `redis://…:6379/0` | `?sslmode=require`; pooler OK if direct is IPv6-only |
 
 ## Step-by-step track
 
-Implementation order for the deploy track (reference only; details land in phase specs and infrastructure docs):
-
 ### A — Phase 8 and Phase 9 locally — **done**
 
-- Phase 8: [phases/phase-08.md](phases/phase-08.md) — chunking, embeddings, Pinecone, `semantic_search`.
-- Phase 9: [phases/phase-09.md](phases/phase-09.md) — ARQ, Redis, `POST /tasks` returns **202**, worker runs clone + `ensure_indexed` + agent; clients poll `GET /tasks/{task_id}`.
-- Worker entry: `uv run arq app.workers.main.WorkerSettings`.
+### B — Supabase provision and migrations — **done**
 
-### B — Supabase provision and migrations
+Migrations applied against Supabase. Connection uses `postgresql+psycopg://` and TLS. WSL may need the **session pooler** when direct `db.*` is IPv6-only; ECS in AWS can use either. Store the working URL in Secrets Manager (never commit it). O7 pooler tuning remains for 14b.
 
-1. Create a Supabase project.
-2. Copy the **direct** connection string (not the transaction pooler for first deploy; see O7 in [decisions.md](decisions.md)).
-3. Append `?sslmode=require` if not present.
-4. From a machine with network access to Supabase:
-   ```bash
-   cd backend
-   DATABASE_URL='postgresql+psycopg://...' uv run alembic upgrade head
-   ```
-5. Store the same URL in AWS Secrets Manager for ECS tasks (never commit it).
+### C — Containerize — **done**
 
-### C — Containerize (app image, not sandbox) — **files in place**
+- `backend/Dockerfile`, `.dockerignore`, root `docker-compose.yml`
+- Same image; worker overrides to `uv run arq app.workers.main.WorkerSettings`
+- Local E2E via compose verified before AWS
 
-- `backend/Dockerfile`: Python 3.12, `uv`, install deps from lockfile; include **git** and **ripgrep** in the image; runs as non-root `appuser`.
-- `backend/.dockerignore`: excludes `.venv`, `.env`, workspaces, tests.
-- `docker-compose.yml` (repo root): services `api`, `worker`, `redis`; point `DATABASE_URL` at Supabase via `backend/.env` (no Postgres in the app image — D24).
-- API command: `uv run uvicorn app.main:app --host 0.0.0.0 --port 8000`
-- Worker command: `uv run arq app.workers.main.WorkerSettings`
-- Compose sets `REDIS_URL=redis://redis:6379/0` for both app services.
+### D — Minimal AWS (14a) — **done**
 
-Verify locally (Docker Desktop + WSL integration required):
+Console-first deploy in `eu-north-1`. Record: [infrastructure/aws/README.md](../infrastructure/aws/README.md).
 
-```bash
-docker compose build
-docker compose up
-# GET http://localhost:8000/health
-# POST /tasks → 202; worker processes via Redis + Supabase
-```
-
-**O1 workaround:** if Docker is unreachable in WSL, build and push images via GitHub Actions → ECR; deploy from ECR to ECS.
-
-### D — Minimal AWS
-
-| Resource | Purpose |
+| Resource | As deployed |
 | --- | --- |
-| ECR | Container image registry |
-| ECS Fargate | `api` and `worker` services (smallest CPU/memory for learning) |
-| Application Load Balancer | HTTPS termination, health checks on API |
-| ElastiCache Redis | ARQ queue |
-| Secrets Manager | `DATABASE_URL`, `REDIS_URL`, `OPENAI_API_KEY`, `PINECONE_*`, etc. |
-| CloudWatch | Logs from both services |
-| Security groups | ALB → API only; worker has **no inbound** ports; DB/Redis from task SGs only |
+| VPC | `ai-agent-vpc`, public + private subnets, NAT Gateway |
+| ECR | `ai-agent-platform:latest` |
+| ECS Fargate | API + worker, 0.5 vCPU / 1 GB, private subnets |
+| ALB | Internet-facing HTTP :80, SG locked to operator IP |
+| ElastiCache | `cache.t4g.micro`, TLS in transit off |
+| Secrets Manager | `ai-agent-platform/app` |
+| CloudWatch | `/ecs/ai-agent-api`, `/ecs/ai-agent-worker` |
 
-No Terraform/CDK required for v1; console or CLI is acceptable for learning. See [infrastructure/aws/README.md](../infrastructure/aws/README.md).
+### E — E2E verification — **done**
 
-### E — E2E verification
+Checklist below passed (example `task_id` `feccdcfc-6635-449d-921b-247f3c0b3d12` against the Microsoft FastAPI sample repo). See AWS README for curl examples.
 
-Use the checklist in [Verification checklist](#verification-checklist) below.
+### F — Phase 14 hardening (14b) — **not started**
 
-### F — Phase 14 hardening (subset)
-
-Before calling Phase 14 “complete”, add:
-
-- GitHub Actions: test on PR; OIDC deploy to ECR/ECS (no long-lived AWS keys in repo).
-- IAM task roles (least privilege; secrets read-only).
-- Documented networking, cost estimate, and teardown steps in [infrastructure/aws/README.md](../infrastructure/aws/README.md).
-
-This is **14b**; **14a** is the minimal deploy in step D.
+- GitHub Actions + OIDC deploy to ECR/ECS
+- Tighter IAM; HTTPS/ACM; networking/cost docs (incl. NAT)
+- Supabase pooler verification (O7); optional Redis `rediss://`
 
 ### G — Return to Phase 10
 
-Resume [roadmap.md](roadmap.md) Phase 10 (Docker sandbox) after deploy track goals are met. Fix O1 (Docker in WSL) on a machine where sandbox development is possible. App containerization (D25) is unrelated to `sandbox.Dockerfile`.
-
-## Supabase setup
-
-1. **Create project** at [supabase.com](https://supabase.com).
-2. **Database settings** → Connection string → **URI** (direct connection to `db.<project>.supabase.co`).
-3. Use the `postgresql+psycopg://` form expected by SQLAlchemy/psycopg v3.
-4. Run Alembic once against this URL before pointing ECS at it.
-5. **Pooler (O7):** defer transaction-pooler tuning until Phase 14b; first deploy uses direct connection.
-
-Supabase Auth is **not** enabled for the deploy track (Phase 12).
+Deploy-track **14a goals are met**. Resume [roadmap.md](roadmap.md) Phase 10 when O1 allows sandbox work. App image (D25) ≠ `sandbox.Dockerfile`.
 
 ## Container notes
 
 | Topic | Guidance |
 | --- | --- |
-| System binaries | `git`, `ripgrep` must be in the image (D14, D21). |
-| One image, two roles | Same image; override `CMD` for API vs worker. |
-| Secrets | Inject at runtime from Secrets Manager; never `ARG` or `ENV` bake secrets into layers. |
-| Non-root user | Run container as non-root user (Phase 14 DoD). |
-| WSL Docker (O1) | Build in CI → push to ECR if local `docker build` fails. |
+| System binaries | `git`, `ripgrep` in the image (D14, D21) |
+| One image, two roles | Override `CMD` for worker |
+| Secrets | Secrets Manager at runtime; never bake into layers |
+| Non-root | Image runs as `appuser` |
+| Redis URL | Exactly `redis://<endpoint>:6379/0` — do not double the port; redeploy after secret changes |
 
 ## Workspaces on Fargate
 
-- **v1:** clone into the task’s ephemeral filesystem (`WORKSPACES_ROOT` on local disk).
-- **Cost:** clones are lost when the worker task is replaced; acceptable for learning and read-only analysis.
-- **Repay:** EFS mount or dedicated worker volume in Phase 14b/15 (see accepted debt in [decisions.md](decisions.md)).
+- **v1:** ephemeral task disk (`WORKSPACES_ROOT`)
+- **Cost:** clones lost on task replace — accepted for learning
+- **Repay:** EFS or volume in 14b/15
 
-## Security (first deploy)
+## Security (14a posture)
 
-Full posture: [security.md](security.md#first-cloud-deploy-posture). Summary:
+Full posture: [security.md](security.md#first-cloud-deploy-posture).
 
-- Restrict ALB access (VPN, IP allow-list, or private ALB + bastion); do not expose an unauthenticated agent API to `0.0.0.0/0`.
-- Supabase and external APIs over TLS; credentials only in Secrets Manager.
-- Worker service: no inbound security group rules.
-- Phase 12 auth is deferred; network restriction is the primary control.
+- ALB SG: operator IP only (no Phase 12 auth)
+- API only from ALB SG; worker inbound none; Redis only from API + worker SGs
+- Private tasks + NAT; credentials only in Secrets Manager
+- Supabase/OpenAI/Pinecone over TLS from the app’s perspective
 
 ## Verification checklist
 
-After deploy track step D, confirm:
-
-- [ ] `GET /health` via ALB returns `{"status":"ok"}`.
-- [ ] `POST /tasks` with a public GitHub URL returns **202** and a `TaskResponse` with `task_id` and `status: pending` (or `running` once worker picks up).
-- [ ] `GET /tasks/{task_id}` eventually shows `completed` with a non-empty `result`.
-- [ ] Supabase `tasks` row exists for the task; `agent_runs` and `tool_calls` rows exist (Phase 7).
-- [ ] CloudWatch shows worker logs: clone, indexing (Phase 8), agent iterations.
-- [ ] Pinecone namespace created for the task (`task-{task_id}`) if indexing enabled.
-- [ ] No secrets appear in logs or task/run rows.
-- [ ] Failed clone or bad URL surfaces `failed` status with error, not a stuck `running`.
+- [x] `GET /health` via ALB returns `{"status":"ok"}`
+- [x] `POST /tasks` returns **202** with `task_id` / `pending` (or `running`)
+- [x] `GET /tasks/{task_id}` reaches `completed` with a non-empty `result`
+- [x] Supabase `tasks` / `agent_runs` / `tool_calls` populated
+- [x] CloudWatch worker logs: clone, indexing, agent
+- [x] Pinecone namespace `task-{task_id}` when indexing enabled
+- [x] No secrets in logs or task/run rows (spot-check)
+- [ ] Failed clone / bad URL → `failed` (optional regression; not required to call 14a done)
 
 ## Cost and teardown
 
-- **Smallest practical:** one Fargate task each for API and worker (0.25 vCPU / 0.5 GB or similar), single-node ElastiCache, ALB hourly charge.
-- **External:** Supabase free tier may suffice for learning; OpenAI and Pinecone usage is usage-based.
-- **Teardown:** delete ECS services, ALB, ElastiCache, ECR images, and Secrets Manager entries when not learning to avoid ongoing cost.
+Material ongoing cost: **ALB**, **Fargate × 2**, **ElastiCache**, **NAT Gateway**, plus usage-based OpenAI/Pinecone.
+
+Teardown order and names: [infrastructure/aws/README.md](../infrastructure/aws/README.md#teardown).
 
 ## Return to roadmap
 
-Recommended phase order for this project:
-
 ```text
-Phases 8 → 9 → Deploy track (14a) → Phase 10 → 11 → … → Phase 14b completion → 15
+Phases 8 → 9 → Deploy track 14a (done) → Phase 10 → 11 → … → Phase 14b → 15
 ```
 
-- Phase 10 is **not blocked** by the deploy track but is **paused** until deploy learning goals are met and O1 is resolved for sandbox work.
-- Phase 14 is split: **14a** = this deploy track; **14b** = OIDC CI, IAM hardening, pooler verification (O7), full documentation.
+- Phase 10 paused until O1 is fixed for sandbox development.
+- Phase 14 is **not** complete until 14b is done.
 
 ## Related documents
 
 | Document | Contents |
 | --- | --- |
-| [roadmap.md](roadmap.md) | Phase index and deploy track section |
-| [architecture.md](architecture.md) | Cloud topology and async flow diagrams |
-| [decisions.md](decisions.md) | D23–D26, accepted debt |
-| [phases/phase-09.md](phases/phase-09.md) | Worker and queue specification |
-| [infrastructure/aws/README.md](../infrastructure/aws/README.md) | AWS runbook stub |
+| [infrastructure/aws/README.md](../infrastructure/aws/README.md) | **As-deployed** 14a inventory and ops |
+| [roadmap.md](roadmap.md) | Phase index; 14a/14b split |
+| [architecture.md](architecture.md) | Cloud topology |
+| [decisions.md](decisions.md) | D23–D27 |
+| [phases/phase-09.md](phases/phase-09.md) | Worker / queue spec |

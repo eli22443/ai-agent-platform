@@ -4,7 +4,7 @@
 
 Fifteen phases, executed in order. Each phase produces working software, has its own tests, and ends in a single commit. A phase introduces only the components it needs; nothing is stubbed in advance because it appears in the target architecture.
 
-This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 9](phases/phase-09.md). Phases 1–9 are complete; next is the [deploy track](deploy-track.md) (D23), then Phase 10 (sandbox).
+This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 9](phases/phase-09.md). Phases 1–9 are complete; **deploy track 14a is complete** ([deploy-track.md](deploy-track.md), [infrastructure/aws/README.md](../infrastructure/aws/README.md)). Next: Phase 10 (sandbox) and/or Phase 14b.
 
 Rules that apply to every phase:
 
@@ -32,30 +32,29 @@ Rules that apply to every phase:
 | 11 | Code modification | None | Not started |
 | 12 | Authentication, optional | Supabase Auth | Not started |
 | 13 | Observability | Langfuse, OpenTelemetry | Not started |
-| 14 | AWS deployment | AWS, GitHub Actions | Not started |
+| 14 | AWS deployment | AWS, GitHub Actions | 14a complete; 14b not started |
 | 15 | Production hardening | None | Not started |
 
 **The MVP boundary is the end of Phase 6.** At that point a user can POST a repository URL and an instruction and receive a real engineering answer produced by an agent that investigated the repository through tools. Phases 1 through 6 require no Redis, no Docker, no Pinecone, no authentication, and no agent framework. Everything after Phase 6 adds capability, scale, or production readiness to a system that already works.
 
 ## Deploy track (after Phase 9)
 
-After Phases 8 and 9 are complete in code, this project follows an intentional **deploy track** before Phase 10 (sandbox). Full guide: [deploy-track.md](deploy-track.md).
+After Phases 8 and 9, this project ran an intentional **deploy track** before Phase 10. Guide: [deploy-track.md](deploy-track.md). As-deployed AWS inventory: [infrastructure/aws/README.md](../infrastructure/aws/README.md).
 
-**Recommended order for this project:**
+**Recommended order:**
 
 ```text
-Phases 8 → 9 → Deploy track (Phase 14a subset) → Phase 10 → 11 → … → Phase 14b completion → 15
+Phases 8 → 9 → Deploy track 14a (done) → Phase 10 → 11 → … → Phase 14b → 15
 ```
 
 | Step | What | Notes |
 | --- | --- | --- |
-| 8 + 9 | Retrieval + async worker | Prerequisites; implement per phase specs |
-| Deploy track | Dockerize API + worker, minimal AWS | Supabase for Postgres (D24); ECS Fargate, ALB, ElastiCache, Secrets Manager |
-| 14a | Minimal cloud deploy | Overlaps deploy track; not “Phase 14 complete” |
-| 10 | Docker sandbox | Paused until deploy track goals met **and** O1 (Docker in WSL) is fixed — not blocked by deploy |
-| 14b | Full Phase 14 DoD | OIDC CI, IAM hardening, O7 pooler verification, documented networking/cost |
+| 8 + 9 | Retrieval + async worker | Complete |
+| Deploy track / 14a | Dockerize + AWS Console deploy | **Complete** — dedicated VPC, NAT, ECS, ALB, ElastiCache, Secrets (D24, D27) |
+| 10 | Docker sandbox | Next when O1 allows; not blocked by 14a |
+| 14b | Full Phase 14 DoD | OIDC CI, IAM hardening, HTTPS, O7, NAT cost options |
 
-Phase 10 is security-critical for code execution but is **not required** to deploy the read-only agent (Phases 1–9). App containerization (`backend/Dockerfile`) is separate from sandbox containerization (`sandbox.Dockerfile`) — see D25.
+Phase 10 is security-critical for code execution but is **not required** for the read-only agent already in cloud. App image ≠ sandbox image (D25).
 
 ## Phase 1 — FastAPI foundation
 
@@ -295,19 +294,17 @@ Full specification: [phase-09.md](phases/phase-09.md).
 
 This phase is **split** because the deploy track (D23, D26) intentionally delivers a subset early, after Phase 9.
 
-### Phase 14a — Minimal deploy (deploy track)
+### Phase 14a — Minimal deploy (deploy track) — **complete**
 
 **Objective.** Containerize and run API + worker on AWS with external Supabase Postgres.
 
-**Concepts.** Multi-stage container builds, ECR, ECS on Fargate, ALB health checks, ElastiCache Redis, Secrets Manager injection, CloudWatch logs.
+**Concepts.** Container builds, ECR, ECS Fargate, ALB health checks, ElastiCache Redis, Secrets Manager, CloudWatch, dedicated VPC + NAT (D27).
 
-**Files.** `backend/Dockerfile`, `docker-compose.yml`, `infrastructure/aws/`, initial `.github/workflows/` (build → ECR optional if O1 blocks local Docker).
+**Files.** `backend/Dockerfile`, `docker-compose.yml`, `infrastructure/aws/README.md` (as-deployed runbook).
 
-**Target.** ECR, ECS Fargate (api + worker services), ALB, ElastiCache, Secrets Manager, Supabase `DATABASE_URL` (D24).
+**As deployed (`eu-north-1`).** ECR `ai-agent-platform`; ECS API + worker (0.5 vCPU / 1 GB, private subnets); ALB HTTP :80 IP-restricted; ElastiCache; Secrets Manager; Supabase `DATABASE_URL`.
 
-**Definition of done (14a).** Image builds and runs as non-root; API and worker deploy as separate services; secrets injected at runtime; `POST /tasks` → 202 and worker E2E verified against Supabase; [deploy-track.md](deploy-track.md) verification checklist passed.
-
-**Commit.** `feat: containerize backend and add minimal AWS deployment`
+**Definition of done (14a).** Met: non-root image; separate API/worker services; secrets at runtime; `POST /tasks` → 202 and worker E2E against Supabase/Pinecone/OpenAI; [deploy-track.md](deploy-track.md) checklist passed. See [infrastructure/aws/README.md](../infrastructure/aws/README.md).
 
 Guide: [deploy-track.md](deploy-track.md).
 

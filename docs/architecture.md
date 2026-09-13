@@ -15,7 +15,8 @@ This document describes the target architecture. Every component is annotated wi
 
 ## Status
 
-Phases 1–9 are implemented in `backend/`. Next is the [deploy track](deploy-track.md) (AWS), then Phase 10 (sandbox). See [phases/phase-09.md](phases/phase-09.md) for background execution.
+Phases 1–9 are implemented in `backend/`. **Deploy track 14a is complete** on AWS (`eu-north-1`); see [deploy-track.md](deploy-track.md) and [infrastructure/aws/README.md](../infrastructure/aws/README.md). Next: Phase 10 (sandbox) and/or Phase 14b. Background execution: [phases/phase-09.md](phases/phase-09.md).
+
 
 ## Target architecture
 
@@ -179,26 +180,29 @@ sequenceDiagram
     API-->>User: status and result
 ```
 
-## Cloud deployment (deploy track)
+## Cloud deployment (deploy track / 14a)
 
-After Phases 8–9, the platform deploys to AWS per [deploy-track.md](deploy-track.md) (D23). Postgres remains external on **Supabase** (D24); Pinecone, OpenAI, and GitHub stay external.
+**14a is deployed and E2E-verified.** Inventory: [infrastructure/aws/README.md](../infrastructure/aws/README.md). Postgres remains **Supabase** (D24); Pinecone, OpenAI, and GitHub stay external.
 
 ```mermaid
 flowchart TD
-    Client["Client"] -->|HTTPS| ALB["ALB"]
-    ALB --> API["ECS Fargate API"]
+    Client["Client"] -->|HTTP :80| ALB["ALB public subnets"]
+    ALB --> API["ECS Fargate API private"]
     API -->|enqueue| Redis[("ElastiCache Redis")]
     API --> DB[("Supabase PostgreSQL")]
-    Redis --> Worker["ECS Fargate Worker"]
+    Redis --> Worker["ECS Fargate Worker private"]
     Worker --> DB
     Worker --> WS["Ephemeral workspace disk"]
     Worker --> Ext["OpenAI Pinecone GitHub"]
+    API --> NAT["NAT Gateway"]
+    Worker --> NAT
 ```
 
-- **Two ECS services** share one container image; API runs Uvicorn, worker runs ARQ (D25: not the Phase 10 sandbox image).
-- **Workspaces** on Fargate use ephemeral task disk in v1; clones are lost on task replacement (accepted debt in [decisions.md](decisions.md)).
-- **Secrets** from AWS Secrets Manager; worker has no inbound ports.
-- Phase 14 splits into **14a** (minimal deploy) and **14b** (OIDC CI, IAM hardening) per D26.
+- Dedicated VPC + private Fargate tasks + **NAT** egress; tasks have no public IPs (D27).
+- **Two ECS services** share one ECR image; API = Uvicorn, worker = ARQ (D25 ≠ sandbox image).
+- **Workspaces** on ephemeral task disk in v1 (accepted debt).
+- **Secrets** from Secrets Manager; worker has no inbound ports; ALB SG IP-restricted.
+- Phase 14: **14a done**; **14b** (OIDC CI, IAM hardening, HTTPS, O7) still open (D26).
 
 ## Data model sketch
 

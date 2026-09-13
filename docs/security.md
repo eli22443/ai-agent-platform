@@ -145,7 +145,7 @@ Applies to the deploy track after Phase 9 (D23). Phase 12 authentication does no
 | Worker service | No inbound security group rules; outbound only to Redis, Supabase, OpenAI, Pinecone, and GitHub. |
 | Secrets parity | Worker receives the same secret set as API (database, LLM, Pinecone, Redis). |
 | Audit | Phase 7 `agent_runs` / `tool_calls` rows remain the post-hoc inspection surface. |
-| Verification | Complete the checklist in [deploy-track.md](deploy-track.md#verification-checklist) before considering 14a done. |
+| Verification | [deploy-track.md](deploy-track.md#verification-checklist) passed for 14a; inventory in [infrastructure/aws/README.md](../infrastructure/aws/README.md). |
 
 Until Phase 12, treat the deployment as a **private demonstration environment**, not a multi-tenant product.
 

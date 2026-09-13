@@ -6,7 +6,7 @@ A record of what was decided, why, and what was rejected. Its job is to stop set
 
 Three sections: settled decisions, open items that must not be resolved by assumption, and accepted technical debt.
 
-**Scope.** Decisions D1–D26 cover Phases 1–9 and the deploy track. Phases 1–9 are implemented in `backend/`. D22 historically introduced a separate `/run` endpoint; Phase 9 repaid sync execution debt by enqueueing work on `POST /tasks`. D23–D26 govern the deploy track after Phase 9.
+**Scope.** Decisions D1–D27 cover Phases 1–9 and the deploy track. Phases 1–9 are implemented in `backend/`. D22 historically introduced a separate `/run` endpoint; Phase 9 repaid sync execution debt by enqueueing work on `POST /tasks`. D23–D27 govern the deploy track; **14a is complete** (see [infrastructure/aws/README.md](../infrastructure/aws/README.md)).
 
 ## Settled decisions
 
@@ -216,7 +216,17 @@ Consequence: deploying the app to ECS does not satisfy Phase 10 sandbox requirem
 
 Minimal ECR/ECS/ALB/ElastiCache deploy is intentional **Phase 14a** work, done as part of the deploy track after Phase 9. Full Phase 14 definition of done (**14b**) — OIDC CI, IAM hardening, documented networking/cost, O7 pooler verification — completes after the first successful cloud E2E run.
 
-Consequence: "Phase 14 complete" in the roadmap means 14a **and** 14b. Do not mark Phase 14 done after deploy track alone.
+**Status:** 14a delivered and E2E-verified. 14b remains open. Consequence: "Phase 14 complete" in the roadmap still means 14a **and** 14b.
+
+### D27 — Dedicated VPC with private ECS tasks and NAT (14a)
+
+The 14a AWS deploy uses a **dedicated VPC** (`ai-agent-vpc`, `10.20.0.0/16`, `eu-north-1`) with public subnets (ALB, NAT) and private subnets (ECS API + worker, ElastiCache). ECS tasks run with **Public IP off** and reach the internet through a **Regional NAT Gateway**.
+
+Rationale: keep the API reachable only via an IP-restricted ALB; keep Redis and tasks off the public internet; learn a production-shaped network early.
+
+Rejected for this deploy: default VPC with public-IP Fargate tasks (simpler and cheaper, weaker isolation).
+
+Consequence: NAT Gateway is an ongoing cost; tear down when idle. Cost optimization of NAT remains a 14b topic. Inventory: [infrastructure/aws/README.md](../infrastructure/aws/README.md).
 
 ## Open items
 
@@ -224,11 +234,11 @@ These must be resolved explicitly, not by assumption during implementation.
 
 ### O1 — Docker unavailable in the development environment
 
-Docker Desktop is installed on the Windows host but its daemon is not reachable from this WSL distribution; `docker info` reports the binary is not found in the distro.
+Docker Desktop on Windows was initially unreachable from WSL (`docker` missing or sock permission errors), which blocked local image builds and Phase 10 sandbox work.
 
-Impact: blocks Phase 10 entirely, which in turn blocks Phase 11, since `run_tests` requires the sandbox, and complicates the Phase 14 image build. Phases 1 through 9 are unaffected.
+**Partial mitigation:** WSL integration and `docker` group membership unblocked **app** image builds and `docker compose` for deploy-track 14a. Phase 10 still requires a reliable Docker daemon for the **sandbox** image and runtime — do not treat 14a success as O1 fully closed for sandbox.
 
-Options: enable WSL integration in Docker Desktop settings, install the Docker engine directly inside the distribution, or perform sandbox work on a different machine.
+Options if sandbox work fails again: re-check Desktop WSL integration, install the engine in-distro, or use another machine.
 
 Not an option: running repository code on the host and calling it a sandbox. See [security.md](security.md).
 
@@ -287,6 +297,7 @@ Vectors are namespaced per task workspace (`task-{task_id}`), not per repository
 | Sync indexing before agent on worker | Phase 8 | Slow first run per task when index is cold | Background indexer (post-Phase 9 optimization) |
 | Concurrent workers racing the same pending task | Phase 9 | Two processes may both see `pending`, double-clone/index into `task-{task_id}`; retry can mix SHAs | Atomic status claim, advisory lock, and/or `delete_namespace` before upsert (deferred; see [phases/phase-09.md](phases/phase-09.md)) |
 | Ephemeral workspaces on Fargate | Deploy track (D23) | Clones lost on ECS task restart | EFS or worker volume (Phase 14b/15) |
+| NAT Gateway for private ECS egress | Deploy track (D27) | Ongoing hourly/data cost while provisioned | Cheaper egress pattern or tear down when idle (14b) |
 | No authentication | Phase 1 | Anyone with network access can invoke the API | Phase 12, or on public exposure |
 | Public repositories only | Phase 4 | Cannot handle private repositories | Phase 12 |
 | Single evaluation fixture | Phase 6 | Benchmark may overfit to one repository's structure; informal live runs documented in [agent-optimization.md](agent-optimization.md) | See O6 |
