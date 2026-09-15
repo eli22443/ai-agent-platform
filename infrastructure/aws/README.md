@@ -117,9 +117,17 @@ Private tasks reach OpenAI, Pinecone, GitHub, and Supabase via NAT **without** p
 - Tag: `latest`
 - One image for API + worker; worker uses a command override
 
+**Preferred:** from the repo root, build, push, and force-redeploy API + worker:
+
+```bash
+./infrastructure/aws/docker.sh
+```
+
+Manual equivalent (build/push only; still force-redeploy ECS afterward):
+
 ```bash
 REGION=eu-north-1
-ACCOUNT=<ACCOUNT>
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 REPO="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/ai-agent-platform"
 
 aws ecr get-login-password --region "${REGION}" \
