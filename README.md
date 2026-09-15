@@ -51,7 +51,7 @@ Start with [docs/deploy-track.md](docs/deploy-track.md) for the next implementat
 2. Poll `GET /tasks/{task_id}` until `status` is `completed` or `failed`.
 3. Read `result` or `error` from the task body.
 
-`POST /tasks/{task_id}/run` returns **410 Gone**. Clone, indexing, and the agent run execute in an ARQ worker. See [docs/phases/phase-09.md](docs/phases/phase-09.md) and [docs/deploy-track.md](docs/deploy-track.md) for cloud deployment.
+A lightweight demo UI at `/` (static HTML/JS under `backend/static/`) wraps this flow in the browser. Swagger UI at `/docs` remains the interactive API explorer. `POST /tasks/{task_id}/run` returns **410 Gone**. Clone, indexing, and the agent run execute in an ARQ worker. See [docs/phases/phase-09.md](docs/phases/phase-09.md) and [docs/deploy-track.md](docs/deploy-track.md) for cloud deployment.
 
 ## Technology
 
@@ -71,7 +71,7 @@ Start with [docs/deploy-track.md](docs/deploy-track.md) for the next implementat
 | Observability | Langfuse, OpenTelemetry | 13 |
 | Deployment | AWS ECS/Fargate, ECR, CloudWatch, GitHub Actions | 14 |
 
-No frontend framework at any phase. Swagger UI at `/docs` is the demonstration surface. No LangChain or LangGraph in the initial implementation. See [docs/decisions.md](docs/decisions.md) for the reasoning and the rejected alternatives.
+No frontend framework. A co-located static demo UI is served at `/`; Swagger UI at `/docs` is the API documentation surface. No LangChain or LangGraph in the initial implementation. See [docs/decisions.md](docs/decisions.md) for the reasoning and the rejected alternatives.
 
 ## Roadmap at a glance
 
@@ -118,7 +118,7 @@ cp .env.example .env     # then edit as needed
 ```bash
 cd backend
 
-uv run uvicorn app.main:app --reload    # run the API at http://127.0.0.1:8000
+uv run uvicorn app.main:app --reload    # API + demo UI at http://127.0.0.1:8000/
 uv run pytest                            # run the test suite
 uv run pytest -v                         # verbose
 uv add <package>                         # add a dependency
@@ -181,6 +181,8 @@ Three levels, described in [docs/evaluation.md](docs/evaluation.md): unit tests 
 ai-agent-platform/
 ├── docs/                  Architecture, design, security, evaluation, roadmap, deploy-track
 ├── backend/               FastAPI application, tests, Dockerfile (deploy track)
+│   ├── app/               Application package
+│   └── static/            Demo UI (HTML/CSS/JS served at /)
 ├── docker-compose.yml     Local api + worker + redis (deploy track step C)
 ├── infrastructure/        Docker sandbox (Phase 10) and AWS runbook (deploy track)
 └── .github/workflows/     CI and deployment (Phase 14b; 14a may add ECR build only)

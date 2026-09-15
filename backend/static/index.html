@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Agent Platform</title>
+  <link rel="stylesheet" href="/static/app.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js" defer></script>
+</head>
+<body>
+  <header class="page-header">
+    <h1>AI Agent Platform</h1>
+    <p class="subtitle">
+      Submit a public Git repository and an engineering instruction. The agent
+      investigates the code and returns an answer.
+    </p>
+  </header>
+
+  <main class="dashboard">
+    <section class="card" id="new-task-card">
+      <h2>New task</h2>
+      <form id="task-form" autocomplete="off">
+        <label for="repository-url">Repository URL</label>
+        <input
+          type="url"
+          id="repository-url"
+          name="repository_url"
+          required
+          placeholder="https://github.com/example/project"
+        />
+
+        <label for="instruction">Instruction</label>
+        <textarea
+          id="instruction"
+          name="instruction"
+          required
+          minlength="10"
+          maxlength="2000"
+          rows="4"
+          placeholder="Find why the authentication tests are failing and explain how to fix them."
+        ></textarea>
+        <p class="field-hint"><span id="instruction-count">0</span> / 2000 characters (min 10)</p>
+
+        <p id="form-error" class="form-error" hidden></p>
+        <button type="submit" id="submit-btn">Run agent</button>
+      </form>
+    </section>
+
+    <section class="card" id="task-panel-card">
+      <div class="card-header-row">
+        <h2>Task</h2>
+        <span id="task-status" class="badge badge-idle">idle</span>
+      </div>
+      <div id="task-empty" class="empty-state">
+        Submit a task above, or select one from recent tasks.
+      </div>
+      <div id="task-panel" hidden>
+        <dl class="kv-list">
+          <div>
+            <dt>Task ID</dt>
+            <dd class="mono" id="task-id">—</dd>
+          </div>
+          <div>
+            <dt>Repository</dt>
+            <dd id="task-repo">—</dd>
+          </div>
+          <div>
+            <dt>Created</dt>
+            <dd id="task-created">—</dd>
+          </div>
+        </dl>
+        <h3 class="subsection-title">Instruction</h3>
+        <p id="task-instruction" class="instruction-block">—</p>
+        <div id="task-result-wrap" hidden>
+          <h3 class="subsection-title">Result</h3>
+          <div id="task-result" class="markdown-body"></div>
+        </div>
+        <div id="task-error-wrap" hidden>
+          <h3 class="subsection-title">Error</h3>
+          <pre id="task-error" class="error-block"></pre>
+        </div>
+        <details id="tool-calls-details" class="tool-calls-details" hidden>
+          <summary>Tool calls</summary>
+          <p id="tool-calls-meta" class="card-meta"></p>
+          <div class="table-wrap">
+            <table id="tool-calls-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Tool</th>
+                  <th>OK</th>
+                  <th>ms</th>
+                  <th>Args</th>
+                </tr>
+              </thead>
+              <tbody id="tool-calls-tbody"></tbody>
+            </table>
+          </div>
+          <p id="tool-calls-empty" class="empty-cell" hidden>No tool calls for this run.</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="card" id="recent-card">
+      <div class="card-header-row">
+        <h2>Recent tasks</h2>
+        <button type="button" id="refresh-list-btn" class="btn-secondary">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table id="tasks-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Repository</th>
+              <th>Instruction</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody id="tasks-tbody">
+            <tr id="tasks-empty-row">
+              <td colspan="4" class="empty-cell">No tasks yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" id="docs-card">
+      <h2>API documentation</h2>
+      <p>
+        Interactive OpenAPI docs for all HTTP endpoints. The JSON task API remains the
+        source of truth; this page is a thin demo client.
+      </p>
+      <a class="btn btn-primary" href="/docs" target="_blank" rel="noopener noreferrer">Open Swagger</a>
+    </section>
+  </main>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
