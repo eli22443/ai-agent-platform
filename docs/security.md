@@ -141,8 +141,10 @@ Applies to the deploy track after Phase 9 (D23). Phase 12 authentication does no
 | Control | Requirement |
 | --- | --- |
 | ALB exposure | Restrict access — VPN, IP allow-list, or private ALB with bastion. Do not expose an unauthenticated agent API to the public internet (`0.0.0.0/0`). |
+| ECS placement | API and worker may run in public subnets with public IPs for egress (no NAT). That does **not** authorize opening the app port to the Internet — API SG must allow the app port only from the ALB SG. |
 | Supabase | Connect over TLS (`?sslmode=require` on `DATABASE_URL`). Credentials only in Secrets Manager, never in images or git. |
 | Worker service | No inbound security group rules; outbound only to Redis, Supabase, OpenAI, Pinecone, and GitHub. |
+| Redis | Private subnets only; SG allows 6379 only from API and worker SGs. |
 | Secrets parity | Worker receives the same secret set as API (database, LLM, Pinecone, Redis). |
 | Audit | Phase 7 `agent_runs` / `tool_calls` rows remain the post-hoc inspection surface. |
 | Verification | [deploy-track.md](deploy-track.md#verification-checklist) passed for 14a; inventory in [infrastructure/aws/README.md](../infrastructure/aws/README.md). |

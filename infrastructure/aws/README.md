@@ -2,7 +2,7 @@
 
 Console-first record of the first cloud deployment. Product guide: [docs/deploy-track.md](../../docs/deploy-track.md).
 
-**Status: 14a complete** — deployed and end-to-end tested successfully.
+**Status: 14a complete** — deployed and end-to-end tested successfully (including after networking cost optimizations).
 
 | Approach | Detail |
 | --- | --- |
@@ -11,7 +11,7 @@ Console-first record of the first cloud deployment. Product guide: [docs/deploy-
 | IaC | None in 14a (no Terraform/CDK/CloudFormation) |
 | External | Supabase Postgres, OpenAI, Pinecone, GitHub (D24) |
 
-Region: **`eu-north-1`**.
+Region: **`eu-north-1`** (Europe / Stockholm).
 
 ---
 
@@ -22,6 +22,7 @@ Region: **`eu-north-1`**.
 - API → ElastiCache Redis / ARQ → worker
 - Worker → clone → index (OpenAI embeddings + Pinecone) → agent (Responses API)
 - Task reaches `completed`; short-poll `GET /tasks/{task_id}` works
+- Post–NAT-removal E2E re-verified (public-subnet ECS with public IPs)
 
 ### Successful E2E example
 
@@ -49,16 +50,26 @@ POST /tasks → Redis/ARQ → ECS worker → clone → chunk/index
                          Internet
                             │
                             ▼
-                 ┌─────────────────────┐
-                 │ ALB (public subnets)│
-                 │ HTTP :80            │
-                 │ ai-agent-alb-sg     │
+                    Internet Gateway
+                            │
+                 ┌──────────┴──────────┐
+                 │                     │
+                 ▼                     ▼
+        Public Subnet 1         Public Subnet 2
+        eu-north-1a             eu-north-1b
+        (ALB ENI + ECS)         (ALB ENI + ECS)
+                 │                     │
                  └──────────┬──────────┘
+                            │
+                            ▼
+                 Application Load Balancer
+                       ai-agent-alb
                             │ :8000
                             ▼
               ┌───────────────────────────┐
               │ ECS Fargate — API         │
-              │ Private subnets           │
+              │ Public subnets            │
+              │ Public IP ENABLED         │
               │ ai-agent-api-sg           │
               └─────────────┬─────────────┘
                             │
@@ -71,7 +82,8 @@ POST /tasks → Redis/ARQ → ECS worker → clone → chunk/index
                  ▼
        ┌───────────────────────────┐
        │ ECS Fargate — Worker      │
-       │ Private subnets           │
+       │ Public subnets            │
+       │ Public IP ENABLED         │
        │ ai-agent-worker-sg        │
        │ (no inbound)              │
        └─────────────┬─────────────┘
@@ -80,8 +92,16 @@ POST /tasks → Redis/ARQ → ECS worker → clone → chunk/index
           ▼          ▼           ▼
        GitHub      OpenAI      Pinecone
 
-Private ECS subnets → Regional NAT Gateway → Internet
-(ECS tasks have Public IP OFF)
+ECS public subnets → public IPs → Internet Gateway → Internet
+(No NAT Gateway — intentionally removed for cost)
+```
+
+**Traffic intent (security groups still enforce this):**
+
+```text
+Internet → ALB → API ECS   (not Internet → API directly)
+Worker: no unnecessary inbound; outbound for external APIs
+Redis: private subnets only
 ```
 
 ---
@@ -92,24 +112,29 @@ Private ECS subnets → Regional NAT Gateway → Internet
 
 | Item | Value |
 | --- | --- |
-| Name | `ai-agent-vpc` |
+| Name | `ai-agent` (confirm tag/name in console if renamed) |
 | CIDR | `10.20.0.0/16` |
 | Region | `eu-north-1` |
+| AZs | `eu-north-1a`, `eu-north-1b` |
 
 Do **not** use the default VPC for this deployment.
 
 | Subnet | CIDR | AZ | Type |
 | --- | --- | --- | --- |
-| `public-1` | `10.20.1.0/24` | `eu-north-1a` | Public |
-| `public-2` | `10.20.2.0/24` | `eu-north-1b` | Public |
-| `private-1` | `10.20.11.0/24` | `eu-north-1a` | Private |
-| `private-2` | `10.20.12.0/24` | `eu-north-1b` | Private |
+| `ai-agent-public-1` | `10.20.1.0/24` | `eu-north-1a` | Public |
+| `ai-agent-public-2` | `10.20.2.0/24` | `eu-north-1b` | Public |
+| `ai-agent-private-1` | `10.20.11.0/24` | `eu-north-1a` | Private |
+| `ai-agent-private-2` | `10.20.12.0/24` | `eu-north-1b` | Private |
 
-- Public route table: `ai-agent-public-rt`
-- Private route table: `ai-agent-private-rt` → `0.0.0.0/0` via NAT
-- NAT Gateway: `ai-agent-nat` (public connectivity, EIP auto-allocated)
+- Public route tables: `0.0.0.0/0` → Internet Gateway (resources with public IPv4 can reach the Internet directly)
+- **NAT Gateway:** deleted (`ai-agent-nat`). Do **not** recreate unless ECS tasks move back to private subnets that need outbound Internet
 
-Private tasks reach OpenAI, Pinecone, GitHub, and Supabase via NAT **without** public IPs on the tasks.
+**Current placement**
+
+| Tier | Subnets | Resources |
+| --- | --- | --- |
+| Public | `ai-agent-public-1/2` | ALB, ECS API, ECS worker |
+| Private | `ai-agent-private-1/2` | ElastiCache Redis only |
 
 ### ECR
 
@@ -183,16 +208,17 @@ arn:aws:secretsmanager:eu-north-1:<ACCOUNT>:secret:ai-agent-platform/app-XXXX:DA
 | SG | Inbound |
 | --- | --- |
 | `ai-agent-alb-sg` | TCP 80 from **your IP** only (not `0.0.0.0/0`) |
-| `ai-agent-api-sg` | TCP 8000 from `ai-agent-alb-sg` |
+| `ai-agent-api-sg` | TCP 8000 from `ai-agent-alb-sg` (not from `0.0.0.0/0`) |
 | `ai-agent-worker-sg` | **None** |
 | `ai-agent-redis-sg` | TCP 6379 from `ai-agent-api-sg` and `ai-agent-worker-sg` |
 
-ALB is the only publicly exposed AWS component.
+ALB is the only intentionally public entry point. Public IPs on ECS tasks do **not** mean the app port should be open to the Internet — keep API inbound restricted to the ALB SG.
 
 ### ElastiCache Redis
 
 | Setting | Value |
 | --- | --- |
+| Name | `ai-agent-redis` |
 | Engine | Redis OSS |
 | Cluster mode | Disabled |
 | Node | `cache.t4g.micro`, 0 replicas |
@@ -200,8 +226,10 @@ ALB is the only publicly exposed AWS component.
 | Encryption at rest | Enabled |
 | Encryption in transit | Disabled (`redis://`, not `rediss://`) |
 | Backups | 1 day |
-| Subnet group | `ai-agent-redis` |
+| Subnet group | **private subnets only** (`ai-agent-private-1`, `ai-agent-private-2`) |
 | SG | `ai-agent-redis-sg` |
+
+Public subnets were removed from the Redis subnet group. Redis stays a private VPC resource with no direct Internet exposure.
 
 ### CloudWatch
 
@@ -218,19 +246,21 @@ Frequent `/health` lines are expected (ALB target-group checks).
 | --- | --- |
 | Cluster | `ai-agent-cluster` (Fargate) |
 | API service | `ai-agent-api-service-2sdqusn9` |
-| API task def | `ai-agent-api:1` |
+| API task def | `ai-agent-api` (see current revision in console) |
 | Worker service | `ai-agent-worker-service` |
-| Worker task def | `ai-agent-worker:1` |
+| Worker task def | `ai-agent-worker` (see current revision in console) |
 | Desired count | 1 each |
-| Networking | Private subnets; **Public IP OFF** |
-| Size | **0.5 vCPU / 1 GB** (both) |
+| Networking | **Public** subnets; **Assign public IP ENABLED** |
+| Size | **0.25 vCPU / 0.5 GB** (both API and worker) |
 
 API: image default CMD (Uvicorn), port 8000.  
-Worker: no ports; command:
+Worker: no ALB exposure; no ports required; command:
 
 ```json
 ["uv", "run", "arq", "app.workers.main.WorkerSettings"]
 ```
+
+**Changing CPU/memory:** create a new task-definition revision → update the service to that revision → wait for deployment → verify tasks and app behavior. A new revision alone does not replace running tasks.
 
 ### ALB + target group
 
@@ -240,6 +270,13 @@ Worker: no ports; command:
 | Listener | HTTP :80 → `ai-agent-api-tg` |
 | Target group | IP targets, HTTP :8000 |
 | Health check | `GET /health`, success `200` |
+
+ALB ENI Elastic IPs (do **not** release while the ALB uses them):
+
+| Public IP | Private IP | Notes |
+| --- | --- | --- |
+| `13.53.108.139` | `10.20.2.175` | ALB ENI |
+| `13.63.94.132` | `10.20.1.44` | ALB ENI |
 
 ```bash
 curl http://<ALB-DNS>/health
@@ -251,6 +288,16 @@ curl -s http://<ALB-DNS>/tasks/<task_id>
 
 Swagger: `http://<ALB-DNS>/docs`
 
+### Elastic IP inventory
+
+| Public IP | Association | Action |
+| --- | --- | --- |
+| `13.53.108.139` | ALB ENI | Keep |
+| `13.63.94.132` | ALB ENI | Keep |
+| `13.51.87.208` | EC2 `i-0db8d25a39405b231` (older project) | Keep unless retiring that instance |
+| `16.192.204.128` | Former NAT | **Released** after NAT deletion |
+| `51.20.158.244` | Former NAT | **Released** after NAT deletion |
+
 ---
 
 ## Compose → AWS
@@ -259,11 +306,11 @@ Swagger: `http://<ALB-DNS>/docs`
 | --- | --- |
 | `api` | ECS Fargate API + ALB |
 | `worker` | ECS Fargate worker |
-| `redis` | ElastiCache Redis |
+| `redis` | ElastiCache Redis (private subnets) |
 | `backend/.env` | Secrets Manager + task env |
 | `localhost:8000` | ALB DNS |
 | Image | ECR |
-| Compose network | VPC + security groups + NAT |
+| Compose network | VPC + security groups (no NAT) |
 
 ---
 
@@ -273,34 +320,52 @@ Swagger: `http://<ALB-DNS>/docs`
 | --- | --- |
 | `/health` OK, `POST /tasks` **503** | `REDIS_URL` shape (`:6379/0` once); force redeploy after secret edit |
 | **202** then stuck `pending` | Worker running; same Redis as API; worker logs; ARQ `process_task` |
-| Worker can't reach GitHub/OpenAI/Pinecone | Private RT → NAT; NAT available; outbound allowed |
+| Worker can't reach GitHub/OpenAI/Pinecone | Task has public IP; public subnet route → IGW; outbound SG/NACL allowed |
 | Target unhealthy | Port 8000; path `/health`; ALB→API SG; API logs |
 | Secrets fail | Execution role `GetSecretValue`; ARN + JSON key `::` form; region |
-| Worker OOM | Raise Fargate memory above 1 GB |
+| Worker OOM | Raise Fargate memory (new task-def revision + service update); current baseline is 0.5 GB |
+| API reachable without ALB | Tighten `ai-agent-api-sg` — app port must come from `ai-agent-alb-sg` only |
 
 ---
 
 ## Cost
 
-While running, expect charges for: **ALB**, **Fargate × 2**, **ElastiCache**, **NAT Gateway** (often material), ECR storage, plus OpenAI/Pinecone usage.
+**Major optimization already applied:** NAT Gateway removed (hourly + data-processing charges). ECS tasks use public IPs via the Internet Gateway instead.
 
-Private subnets + NAT are more secure than public-IP tasks, but **not** the cheapest demo layout. Tear down when idle.
+While running, expect charges for: **ALB**, **Fargate × 2** (0.25 vCPU / 0.5 GB each), **ElastiCache**, ECR storage, plus OpenAI/Pinecone usage.
+
+This public-subnet ECS layout is appropriate for a **development/demo** deployment. It is cheaper than private tasks + NAT, with a larger network attack surface — mitigate with security groups as above. Tear down when idle.
 
 ---
 
 ## Teardown
 
 1. Scale API and worker desired count to **0**, then delete services  
-2. Delete ALB, then target group  
+2. Delete ALB, then target group (ALB EIPs go with the ENIs — do not manually release them first)  
 3. Delete ECS cluster if unused  
 4. Delete ElastiCache Redis  
-5. Delete NAT Gateway; release EIP if unused  
-6. Delete security groups (after dependents)  
-7. ECR images/repo optional  
-8. Schedule Secrets Manager deletion  
-9. CloudWatch log groups optional  
-10. Route tables / subnets / VPC if removing the whole stack  
-11. Project IAM roles optional  
+5. Delete security groups (after dependents)  
+6. ECR images/repo optional  
+7. Schedule Secrets Manager deletion  
+8. CloudWatch log groups optional  
+9. Route tables / subnets / VPC if removing the whole stack  
+10. Project IAM roles optional  
+11. Older EC2 EIP `13.51.87.208` only if that instance is intentionally retired  
+
+NAT Gateway and its EIPs are already gone — skip recreating them during teardown.
+
+---
+
+## Current infrastructure checklist
+
+- [x] VPC + Internet Gateway
+- [x] Two public + two private subnets
+- [x] ALB across public subnets
+- [x] ECS API + worker (public subnets, public IPs enabled)
+- [x] Redis private; subnet group = private subnets only
+- [x] NAT Gateway deleted; NAT EIPs released
+- [x] Fargate API/worker sized to 0.25 vCPU / 0.5 GB
+- [x] Application E2E tested after networking changes
 
 ---
 
@@ -310,7 +375,8 @@ Private subnets + NAT are more secure than public-IP tasks, but **not** the chea
 
 - GitHub Actions + OIDC → ECR/ECS  
 - Tighter IAM; HTTPS/ACM; ALB access control  
-- NAT cost options; Redis encryption in transit  
+- Documented networking/cost (NAT already removed; revisit private ECS if hardening requires it)  
+- Redis encryption in transit  
 - Supabase pooler verification (O7)  
 - Autoscaling, alarms, rollback, secrets rotation, observability  
 

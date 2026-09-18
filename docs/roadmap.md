@@ -50,9 +50,9 @@ Phases 8 → 9 → Deploy track 14a (done) → Phase 10 → 11 → … → Phase
 | Step | What | Notes |
 | --- | --- | --- |
 | 8 + 9 | Retrieval + async worker | Complete |
-| Deploy track / 14a | Dockerize + AWS Console deploy | **Complete** — dedicated VPC, NAT, ECS, ALB, ElastiCache, Secrets (D24, D27) |
+| Deploy track / 14a | Dockerize + AWS Console deploy | **Complete** — dedicated VPC, public ECS (no NAT), ALB, ElastiCache, Secrets (D24, D27) |
 | 10 | Docker sandbox | Next when O1 allows; not blocked by 14a |
-| 14b | Full Phase 14 DoD | OIDC CI, IAM hardening, HTTPS, O7, NAT cost options |
+| 14b | Full Phase 14 DoD | OIDC CI, IAM hardening, HTTPS, O7, networking hardening |
 
 Phase 10 is security-critical for code execution but is **not required** for the read-only agent already in cloud. App image ≠ sandbox image (D25).
 
@@ -298,11 +298,11 @@ This phase is **split** because the deploy track (D23, D26) intentionally delive
 
 **Objective.** Containerize and run API + worker on AWS with external Supabase Postgres.
 
-**Concepts.** Container builds, ECR, ECS Fargate, ALB health checks, ElastiCache Redis, Secrets Manager, CloudWatch, dedicated VPC + NAT (D27).
+**Concepts.** Container builds, ECR, ECS Fargate, ALB health checks, ElastiCache Redis, Secrets Manager, CloudWatch, dedicated VPC with public ECS egress / no NAT (D27).
 
 **Files.** `backend/Dockerfile`, `docker-compose.yml`, `infrastructure/aws/README.md` (as-deployed runbook).
 
-**As deployed (`eu-north-1`).** ECR `ai-agent-platform`; ECS API + worker (0.5 vCPU / 1 GB, private subnets); ALB HTTP :80 IP-restricted; ElastiCache; Secrets Manager; Supabase `DATABASE_URL`.
+**As deployed (`eu-north-1`).** ECR `ai-agent-platform`; ECS API + worker (0.25 vCPU / 0.5 GB, public subnets, public IP on); ALB HTTP :80 IP-restricted; ElastiCache in private subnets; Secrets Manager; Supabase `DATABASE_URL`.
 
 **Definition of done (14a).** Met: non-root image; separate API/worker services; secrets at runtime; `POST /tasks` → 202 and worker E2E against Supabase/Pinecone/OpenAI; [deploy-track.md](deploy-track.md) checklist passed. See [infrastructure/aws/README.md](../infrastructure/aws/README.md).
 

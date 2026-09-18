@@ -23,7 +23,7 @@ See [decisions.md](decisions.md) D23–D27.
 | Supabase + migrations | Complete (cloud `DATABASE_URL`) |
 | Pinecone index + OpenAI key | Complete |
 | Container image (`backend/Dockerfile`, compose) | Complete |
-| AWS (`eu-north-1`) — ECR, ECS, ALB, ElastiCache, Secrets, VPC+NAT | Complete (14a) |
+| AWS (`eu-north-1`) — ECR, ECS, ALB, ElastiCache, Secrets, VPC (no NAT) | Complete (14a) |
 
 ## What stays external
 
@@ -41,27 +41,28 @@ See [decisions.md](decisions.md) D23–D27.
 ```mermaid
 flowchart TD
     Client["Client / Swagger UI"] -->|HTTP :80| ALB["ALB public subnets"]
-    ALB -->|:8000| API["ECS Fargate API private"]
-    API -->|enqueue| Redis[("ElastiCache Redis")]
+    ALB -->|:8000| API["ECS Fargate API public"]
+    API -->|enqueue| Redis[("ElastiCache Redis private")]
     API --> Supabase[("Supabase PostgreSQL")]
-    Redis --> Worker["ECS Fargate Worker private"]
+    Redis --> Worker["ECS Fargate Worker public"]
     Worker -->|clone + index + agent| WS["Ephemeral workspace disk"]
     Worker --> Supabase
     Worker --> OpenAI["OpenAI API"]
     Worker --> Pinecone["Pinecone"]
     Worker --> GitHub["GitHub HTTPS clone"]
-    API --> NAT["Regional NAT Gateway"]
-    Worker --> NAT
-    NAT --> Internet["Internet"]
+    API --> IGW["Internet Gateway"]
+    Worker --> IGW
+    IGW --> Internet["Internet"]
     API --> CW["CloudWatch Logs"]
     Worker --> CW
 ```
 
-- **Dedicated VPC** `ai-agent-vpc` (`10.20.0.0/16`) in **`eu-north-1`** — not the default VPC (D27).
+- **Dedicated VPC** (`10.20.0.0/16`) in **`eu-north-1`** — not the default VPC (D27).
 - **Two ECS services**, same ECR image: API = Uvicorn; worker = ARQ command override.
-- Tasks in **private** subnets, **Public IP OFF**; egress via **NAT Gateway**.
-- **Redis** = ElastiCache; **Postgres** = Supabase via Secrets Manager.
+- Tasks in **public** subnets with **Assign public IP ENABLED**; egress via Internet Gateway (**no NAT Gateway** — removed for cost).
+- **Redis** = ElastiCache in **private** subnets only; **Postgres** = Supabase via Secrets Manager.
 - Workspaces on ephemeral Fargate disk (accepted debt; EFS deferred).
+- Fargate size: **0.25 vCPU / 0.5 GB** each (API + worker).
 
 Details and resource names: [infrastructure/aws/README.md](../infrastructure/aws/README.md).
 
@@ -93,11 +94,11 @@ Console-first deploy in `eu-north-1`. Record: [infrastructure/aws/README.md](../
 
 | Resource | As deployed |
 | --- | --- |
-| VPC | `ai-agent-vpc`, public + private subnets, NAT Gateway |
+| VPC | Dedicated VPC, public + private subnets; **no NAT Gateway** |
 | ECR | `ai-agent-platform:latest` |
-| ECS Fargate | API + worker, 0.5 vCPU / 1 GB, private subnets |
+| ECS Fargate | API + worker, 0.25 vCPU / 0.5 GB, **public** subnets, public IP on |
 | ALB | Internet-facing HTTP :80, SG locked to operator IP |
-| ElastiCache | `cache.t4g.micro`, TLS in transit off |
+| ElastiCache | `cache.t4g.micro`, private subnets only, TLS in transit off |
 | Secrets Manager | `ai-agent-platform/app` |
 | CloudWatch | `/ecs/ai-agent-api`, `/ecs/ai-agent-worker` |
 
@@ -108,7 +109,7 @@ Checklist below passed (example `task_id` `feccdcfc-6635-449d-921b-247f3c0b3d12`
 ### F — Phase 14 hardening (14b) — **not started**
 
 - GitHub Actions + OIDC deploy to ECR/ECS
-- Tighter IAM; HTTPS/ACM; networking/cost docs (incl. NAT)
+- Tighter IAM; HTTPS/ACM; networking/cost docs (NAT already removed; revisit private ECS if needed)
 - Supabase pooler verification (O7); optional Redis `rediss://`
 
 ### G — Return to Phase 10
@@ -136,8 +137,8 @@ Deploy-track **14a goals are met**. Resume [roadmap.md](roadmap.md) Phase 10 whe
 Full posture: [security.md](security.md#first-cloud-deploy-posture).
 
 - ALB SG: operator IP only (no Phase 12 auth)
-- API only from ALB SG; worker inbound none; Redis only from API + worker SGs
-- Private tasks + NAT; credentials only in Secrets Manager
+- API only from ALB SG (not `0.0.0.0/0`); worker inbound none; Redis only from API + worker SGs
+- Public-subnet ECS with public IPs for egress; credentials only in Secrets Manager
 - Supabase/OpenAI/Pinecone over TLS from the app’s perspective
 
 ## Verification checklist
@@ -153,7 +154,7 @@ Full posture: [security.md](security.md#first-cloud-deploy-posture).
 
 ## Cost and teardown
 
-Material ongoing cost: **ALB**, **Fargate × 2**, **ElastiCache**, **NAT Gateway**, plus usage-based OpenAI/Pinecone.
+Material ongoing cost: **ALB**, **Fargate × 2** (0.25 vCPU / 0.5 GB), **ElastiCache**, plus usage-based OpenAI/Pinecone. **NAT Gateway removed** (was a major cost driver).
 
 Teardown order and names: [infrastructure/aws/README.md](../infrastructure/aws/README.md#teardown).
 

@@ -187,21 +187,21 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     Client["Client"] -->|HTTP :80| ALB["ALB public subnets"]
-    ALB --> API["ECS Fargate API private"]
-    API -->|enqueue| Redis[("ElastiCache Redis")]
+    ALB --> API["ECS Fargate API public"]
+    API -->|enqueue| Redis[("ElastiCache Redis private")]
     API --> DB[("Supabase PostgreSQL")]
-    Redis --> Worker["ECS Fargate Worker private"]
+    Redis --> Worker["ECS Fargate Worker public"]
     Worker --> DB
     Worker --> WS["Ephemeral workspace disk"]
     Worker --> Ext["OpenAI Pinecone GitHub"]
-    API --> NAT["NAT Gateway"]
-    Worker --> NAT
+    API --> IGW["Internet Gateway"]
+    Worker --> IGW
 ```
 
-- Dedicated VPC + private Fargate tasks + **NAT** egress; tasks have no public IPs (D27).
+- Dedicated VPC + **public** Fargate tasks with public IPs + **IGW** egress; **no NAT** (D27, cost-optimized). Redis stays private.
 - **Two ECS services** share one ECR image; API = Uvicorn, worker = ARQ (D25 ≠ sandbox image).
 - **Workspaces** on ephemeral task disk in v1 (accepted debt).
-- **Secrets** from Secrets Manager; worker has no inbound ports; ALB SG IP-restricted.
+- **Secrets** from Secrets Manager; worker has no inbound ports; API inbound from ALB SG only; ALB SG IP-restricted.
 - Phase 14: **14a done**; **14b** (OIDC CI, IAM hardening, HTTPS, O7) still open (D26).
 
 ## Data model sketch

@@ -218,15 +218,19 @@ Minimal ECR/ECS/ALB/ElastiCache deploy is intentional **Phase 14a** work, done a
 
 **Status:** 14a delivered and E2E-verified. 14b remains open. Consequence: "Phase 14 complete" in the roadmap still means 14a **and** 14b.
 
-### D27 — Dedicated VPC with private ECS tasks and NAT (14a)
+### D27 — Dedicated VPC; public ECS egress without NAT (14a, cost-optimized)
 
-The 14a AWS deploy uses a **dedicated VPC** (`ai-agent-vpc`, `10.20.0.0/16`, `eu-north-1`) with public subnets (ALB, NAT) and private subnets (ECS API + worker, ElastiCache). ECS tasks run with **Public IP off** and reach the internet through a **Regional NAT Gateway**.
+The 14a AWS deploy uses a **dedicated VPC** (`10.20.0.0/16`, `eu-north-1`) with public and private subnets.
 
-Rationale: keep the API reachable only via an IP-restricted ALB; keep Redis and tasks off the public internet; learn a production-shaped network early.
+**As first deployed:** public subnets held the ALB and a Regional NAT Gateway; ECS API + worker and ElastiCache ran in private subnets with Public IP off and egress via NAT.
 
-Rejected for this deploy: default VPC with public-IP Fargate tasks (simpler and cheaper, weaker isolation).
+**Current (cost-optimized):** the **NAT Gateway was deleted**. ECS API and worker now run in **public subnets** with **Assign public IP ENABLED**, reaching the Internet via the Internet Gateway. ElastiCache Redis remains in **private** subnets only (public subnets removed from the Redis subnet group). Fargate tasks sized to **0.25 vCPU / 0.5 GB**.
 
-Consequence: NAT Gateway is an ongoing cost; tear down when idle. Cost optimization of NAT remains a 14b topic. Inventory: [infrastructure/aws/README.md](../infrastructure/aws/README.md).
+Rationale: keep a dedicated VPC and ALB-fronted API; drop NAT hourly/data charges for a development/demo deploy. Security groups still enforce Internet → ALB → API (not direct Internet → API). Do **not** recreate NAT unless tasks return to private subnets that need outbound Internet.
+
+Rejected permanently for this deploy: default VPC. Accepted tradeoff vs original private+NAT layout: larger attack surface, mitigated by SG rules — appropriate for demo, revisit for production hardening (14b).
+
+Consequence: cheaper ongoing network cost; document SG discipline carefully. Inventory: [infrastructure/aws/README.md](../infrastructure/aws/README.md).
 
 ## Open items
 
@@ -297,7 +301,7 @@ Vectors are namespaced per task workspace (`task-{task_id}`), not per repository
 | Sync indexing before agent on worker | Phase 8 | Slow first run per task when index is cold | Background indexer (post-Phase 9 optimization) |
 | Concurrent workers racing the same pending task | Phase 9 | Two processes may both see `pending`, double-clone/index into `task-{task_id}`; retry can mix SHAs | Atomic status claim, advisory lock, and/or `delete_namespace` before upsert (deferred; see [phases/phase-09.md](phases/phase-09.md)) |
 | Ephemeral workspaces on Fargate | Deploy track (D23) | Clones lost on ECS task restart | EFS or worker volume (Phase 14b/15) |
-| NAT Gateway for private ECS egress | Deploy track (D27) | Ongoing hourly/data cost while provisioned | Cheaper egress pattern or tear down when idle (14b) |
+| Public-subnet ECS (no NAT) for demo egress | Deploy track (D27) | Tasks have public IPs; larger attack surface than private+NAT | Private ECS + NAT/VPC endpoints if production hardening requires it (14b) |
 | No authentication | Phase 1 | Anyone with network access can invoke the API | Phase 12, or on public exposure |
 | Public repositories only | Phase 4 | Cannot handle private repositories | Phase 12 |
 | Single evaluation fixture | Phase 6 | Benchmark may overfit to one repository's structure; informal live runs documented in [agent-optimization.md](agent-optimization.md) | See O6 |
