@@ -81,7 +81,7 @@ Introduced: Phase 4 for disk, Phase 6 for run limits, Phase 10 for execution lim
 
 The initial platform has no authentication by design. Anything reachable can be invoked by anyone who can reach it.
 
-Controls: keep the deployment private until Phase 15 hardening; if exposed, apply IP-based rate limiting and a global concurrency cap on agent runs; accept only public repositories; and expose no endpoint that reveals another caller's task content. Authentication in Phase 12 replaces this posture rather than supplementing it.
+Controls: the demo API is already publicly reachable over HTTPS without auth (D28) — apply IP-based rate limiting and a global concurrency cap on agent runs; accept only public repositories; and expose no endpoint that reveals another caller's task content. Authentication in Phase 12 replaces this posture rather than supplementing it. Until then, treat public exposure as an accepted demo risk, not multi-tenant readiness.
 
 Introduced: Phase 15, or earlier if the API is exposed.
 
@@ -136,11 +136,12 @@ Phase 14 is split into **14a** (minimal deploy, deploy track) and **14b** (full 
 
 ## First cloud deploy posture
 
-Applies to the deploy track after Phase 9 (D23). Phase 12 authentication does not exist yet; network restriction is the primary control.
+Applies to the deploy track after Phase 9 (D23). Phase 12 authentication does not exist yet.
 
 | Control | Requirement |
 | --- | --- |
-| ALB exposure | Restrict access — VPN, IP allow-list, or private ALB with bastion. Do not expose an unauthenticated agent API to the public internet (`0.0.0.0/0`). |
+| ALB / public URL | Demo is publicly reachable at `https://api.airepoagent.app` (ACM + Vercel DNS → ALB). No application auth yet — accepted demo risk (D28). Prefer rate limiting / concurrency caps; add Phase 12 or restrict the ALB before treating as multi-tenant. |
+| TLS | Terminate HTTPS on the ALB with ACM cert for `api.airepoagent.app`. Keep the ACM DNS validation CNAME in Vercel DNS for renewal. |
 | ECS placement | API and worker may run in public subnets with public IPs for egress (no NAT). That does **not** authorize opening the app port to the Internet — API SG must allow the app port only from the ALB SG. |
 | Supabase | Connect over TLS (`?sslmode=require` on `DATABASE_URL`). Credentials only in Secrets Manager, never in images or git. |
 | Worker service | No inbound security group rules; outbound only to Redis, Supabase, OpenAI, Pinecone, and GitHub. |
@@ -149,13 +150,13 @@ Applies to the deploy track after Phase 9 (D23). Phase 12 authentication does no
 | Audit | Phase 7 `agent_runs` / `tool_calls` rows remain the post-hoc inspection surface. |
 | Verification | [deploy-track.md](deploy-track.md#verification-checklist) passed for 14a; inventory in [infrastructure/aws/README.md](../infrastructure/aws/README.md). |
 
-Until Phase 12, treat the deployment as a **private demonstration environment**, not a multi-tenant product.
+Until Phase 12, treat the deployment as a **public demonstration environment without auth**, not a multi-tenant product.
 
 ## Known accepted risks
 
 | Risk | Rationale | Revisit |
 | --- | --- | --- |
-| No authentication in the initial platform | Single-user demonstration; not publicly exposed | Phase 12, or immediately on public exposure |
+| No authentication; API publicly on HTTPS | Demo hostname `api.airepoagent.app` (D28); learning deploy | Phase 12, or interim ALB restriction / shared secret |
 | Public repositories only | Avoids handling third-party repository credentials before authorization exists | Phase 12 |
 | Prompt injection cannot be fully prevented | Mitigated by capability restriction rather than eliminated | Continuous |
 | Docker unavailable in the current WSL environment | Blocks Phase 10; Phases 1 through 9 are unaffected | Before Phase 10 |

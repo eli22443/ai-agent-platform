@@ -2,7 +2,7 @@
 
 Console-first record of the first cloud deployment. Product guide: [docs/deploy-track.md](../../docs/deploy-track.md).
 
-**Status: 14a complete** — deployed and end-to-end tested successfully (including after networking cost optimizations).
+**Status: 14a complete** — deployed and end-to-end tested; publicly reachable over **HTTPS** at `https://api.airepoagent.app`.
 
 | Approach | Detail |
 | --- | --- |
@@ -10,6 +10,7 @@ Console-first record of the first cloud deployment. Product guide: [docs/deploy-
 | Image publish | One CLI step: build/push to ECR |
 | IaC | None in 14a (no Terraform/CDK/CloudFormation) |
 | External | Supabase Postgres, OpenAI, Pinecone, GitHub (D24) |
+| Public URL | `https://api.airepoagent.app` (ACM + Vercel DNS → ALB) |
 
 Region: **`eu-north-1`** (Europe / Stockholm).
 
@@ -18,11 +19,12 @@ Region: **`eu-north-1`** (Europe / Stockholm).
 ## Verified working
 
 - ECS Fargate API and worker services running
-- ALB healthy; `GET /health` → `200` `{"status":"ok"}`
+- ALB healthy; `GET /health` → `200` `{"status":"ok"}` (including via HTTPS hostname)
 - API → ElastiCache Redis / ARQ → worker
 - Worker → clone → index (OpenAI embeddings + Pinecone) → agent (Responses API)
 - Task reaches `completed`; short-poll `GET /tasks/{task_id}` works
 - Post–NAT-removal E2E re-verified (public-subnet ECS with public IPs)
+- Custom domain + ACM HTTPS for `api.airepoagent.app`
 
 ### Successful E2E example
 
@@ -50,6 +52,10 @@ POST /tasks → Redis/ARQ → ECS worker → clone → chunk/index
                          Internet
                             │
                             ▼
+              https://api.airepoagent.app
+                     (Vercel DNS CNAME)
+                            │
+                            ▼
                     Internet Gateway
                             │
                  ┌──────────┴──────────┐
@@ -64,6 +70,7 @@ POST /tasks → Redis/ARQ → ECS worker → clone → chunk/index
                             ▼
                  Application Load Balancer
                        ai-agent-alb
+                    HTTPS :443 (ACM)
                             │ :8000
                             ▼
               ┌───────────────────────────┐
@@ -99,11 +106,10 @@ ECS public subnets → public IPs → Internet Gateway → Internet
 **Traffic intent (security groups still enforce this):**
 
 ```text
-Internet → ALB → API ECS   (not Internet → API directly)
+Internet → ALB (HTTPS) → API ECS   (not Internet → API directly)
 Worker: no unnecessary inbound; outbound for external APIs
 Redis: private subnets only
 ```
-
 ---
 
 ## AWS resources (as deployed)
@@ -207,12 +213,14 @@ arn:aws:secretsmanager:eu-north-1:<ACCOUNT>:secret:ai-agent-platform/app-XXXX:DA
 
 | SG | Inbound |
 | --- | --- |
-| `ai-agent-alb-sg` | TCP 80 from **your IP** only (not `0.0.0.0/0`) |
+| `ai-agent-alb-sg` | TCP **443** (HTTPS) from the Internet for public demo access; HTTP :80 only if still used for redirect/legacy |
 | `ai-agent-api-sg` | TCP 8000 from `ai-agent-alb-sg` (not from `0.0.0.0/0`) |
 | `ai-agent-worker-sg` | **None** |
 | `ai-agent-redis-sg` | TCP 6379 from `ai-agent-api-sg` and `ai-agent-worker-sg` |
 
 ALB is the only intentionally public entry point. Public IPs on ECS tasks do **not** mean the app port should be open to the Internet — keep API inbound restricted to the ALB SG.
+
+**Auth note:** the API is publicly reachable over HTTPS with **no application authentication** yet (Phase 12). Treat as a demo surface; add auth or tighten ALB access before treating it as multi-tenant.
 
 ### ElastiCache Redis
 
@@ -267,7 +275,8 @@ Worker: no ALB exposure; no ports required; command:
 | Item | Value |
 | --- | --- |
 | ALB | `ai-agent-alb`, internet-facing, IPv4, public subnets |
-| Listener | HTTP :80 → `ai-agent-api-tg` |
+| ALB DNS | `ai-agent-alb-1520727908.eu-north-1.elb.amazonaws.com` |
+| HTTPS listener | **:443** → `ai-agent-api-tg`, ACM cert for `api.airepoagent.app` |
 | Target group | IP targets, HTTP :8000 |
 | Health check | `GET /health`, success `200` |
 
@@ -278,15 +287,43 @@ ALB ENI Elastic IPs (do **not** release while the ALB uses them):
 | `13.53.108.139` | `10.20.2.175` | ALB ENI |
 | `13.63.94.132` | `10.20.1.44` | ALB ENI |
 
+Preferred public base URL: **`https://api.airepoagent.app`**
+
 ```bash
-curl http://<ALB-DNS>/health
-curl -s -X POST http://<ALB-DNS>/tasks \
+curl https://api.airepoagent.app/health
+curl -s -X POST https://api.airepoagent.app/tasks \
   -H 'Content-Type: application/json' \
   -d '{"repository_url":"https://github.com/microsoft/python-sample-vscode-fastapi-tutorial","instruction":"Inspect this repository and identify the main application entry point, the API routes, and how the application is started. Do not modify any files. Summarize your findings with file paths."}'
-curl -s http://<ALB-DNS>/tasks/<task_id>
+curl -s https://api.airepoagent.app/tasks/<task_id>
 ```
 
-Swagger: `http://<ALB-DNS>/docs`
+Swagger / demo UI: `https://api.airepoagent.app/docs` and `https://api.airepoagent.app/`
+
+### HTTPS, domain, and DNS
+
+| Item | Value |
+| --- | --- |
+| Domain | `airepoagent.app` (purchased via Vercel; **Vercel DNS** authoritative) |
+| Nameservers | `ns1.vercel-dns.com`, `ns2.vercel-dns.com` |
+| API hostname | `https://api.airepoagent.app` |
+| Future frontend (not deployed) | `https://airepoagent.app` |
+| ACM certificate | Public cert for `api.airepoagent.app`, DNS validation, RSA 2048, export disabled, status **ISSUED** |
+| Traffic CNAME (Vercel) | `api` → `ai-agent-alb-1520727908.eu-north-1.elb.amazonaws.com` |
+
+**DNS roles (do not confuse them):**
+
+1. **ACM validation CNAME** — proves domain ownership for certificate issue/renewal. Keep it; it does **not** route API traffic.
+2. **`api` CNAME** — routes `api.airepoagent.app` to the ALB.
+
+Verified resolution (example):
+
+```text
+nslookup api.airepoagent.app 8.8.8.8
+→ ai-agent-alb-1520727908.eu-north-1.elb.amazonaws.com
+→ 13.63.94.132, 13.53.108.139
+```
+
+Vercel is used here for **domain + DNS only**. It does not host the API; the API remains on AWS ECS behind the ALB (D10 / D28).
 
 ### Elastic IP inventory
 
@@ -308,7 +345,7 @@ Swagger: `http://<ALB-DNS>/docs`
 | `worker` | ECS Fargate worker |
 | `redis` | ElastiCache Redis (private subnets) |
 | `backend/.env` | Secrets Manager + task env |
-| `localhost:8000` | ALB DNS |
+| `localhost:8000` | `https://api.airepoagent.app` (ALB + ACM) |
 | Image | ECR |
 | Compose network | VPC + security groups (no NAT) |
 
@@ -325,6 +362,8 @@ Swagger: `http://<ALB-DNS>/docs`
 | Secrets fail | Execution role `GetSecretValue`; ARN + JSON key `::` form; region |
 | Worker OOM | Raise Fargate memory (new task-def revision + service update); current baseline is 0.5 GB |
 | API reachable without ALB | Tighten `ai-agent-api-sg` — app port must come from `ai-agent-alb-sg` only |
+| HTTPS / cert errors | ACM status ISSUED; listener uses cert for `api.airepoagent.app`; keep ACM validation CNAME in Vercel DNS |
+| Hostname does not resolve | Vercel `api` CNAME → ALB DNS name; propagation / authoritative NS |
 
 ---
 
@@ -366,18 +405,22 @@ NAT Gateway and its EIPs are already gone — skip recreating them during teardo
 - [x] NAT Gateway deleted; NAT EIPs released
 - [x] Fargate API/worker sized to 0.25 vCPU / 0.5 GB
 - [x] Application E2E tested after networking changes
+- [x] ACM certificate for `api.airepoagent.app` (ISSUED)
+- [x] Vercel DNS `api` CNAME → ALB
+- [x] Public HTTPS access at `https://api.airepoagent.app`
 
 ---
 
 ## Phase 14b (next)
 
-14a is the working baseline. **14b** hardening (not done):
+14a is the working baseline (including public HTTPS hostname). **14b** hardening (not done):
 
 - GitHub Actions + OIDC → ECR/ECS  
-- Tighter IAM; HTTPS/ACM; ALB access control  
+- Tighter IAM; auth / access control for the now-public API (Phase 12 or interim ALB restriction)  
 - Documented networking/cost (NAT already removed; revisit private ECS if hardening requires it)  
 - Redis encryption in transit  
 - Supabase pooler verification (O7)  
 - Autoscaling, alarms, rollback, secrets rotation, observability  
+- Optional: apex `airepoagent.app` frontend host  
 
 See [roadmap.md](../../docs/roadmap.md).

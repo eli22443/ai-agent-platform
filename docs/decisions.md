@@ -6,7 +6,7 @@ A record of what was decided, why, and what was rejected. Its job is to stop set
 
 Three sections: settled decisions, open items that must not be resolved by assumption, and accepted technical debt.
 
-**Scope.** Decisions D1–D27 cover Phases 1–9 and the deploy track. Phases 1–9 are implemented in `backend/`. D22 historically introduced a separate `/run` endpoint; Phase 9 repaid sync execution debt by enqueueing work on `POST /tasks`. D23–D27 govern the deploy track; **14a is complete** (see [infrastructure/aws/README.md](../infrastructure/aws/README.md)).
+**Scope.** Decisions D1–D28 cover Phases 1–9 and the deploy track. Phases 1–9 are implemented in `backend/`. D22 historically introduced a separate `/run` endpoint; Phase 9 repaid sync execution debt by enqueueing work on `POST /tasks`. D23–D28 govern the deploy track; **14a is complete** including public HTTPS (see [infrastructure/aws/README.md](../infrastructure/aws/README.md)).
 
 ## Settled decisions
 
@@ -74,11 +74,13 @@ Rejected: subprocess isolation, which is not an isolation boundary at all; gViso
 
 Hard constraint: no unrestricted host shell execution is exposed to the agent at any phase.
 
-### D10 — No frontend
+### D10 — No frontend application (DNS may use Vercel)
 
-Swagger UI is the demonstration surface. No Next.js, no Vercel, no frontend framework at any phase.
+Swagger UI / the co-located static demo at `/` is the demonstration surface. No Next.js app and no frontend framework as a product deliverable at any phase.
 
-Rationale: the project's purpose is backend, agent, and infrastructure engineering. A frontend would consume time without exercising any of it.
+**Clarification:** the domain `airepoagent.app` is registered/DNS-hosted on **Vercel** for nameserver convenience only. That does not host the API or a frontend app; the API runs on AWS. Apex `https://airepoagent.app` is reserved for a possible future frontend and is not deployed.
+
+Rationale: the project's purpose is backend, agent, and infrastructure engineering. A frontend product would consume time without exercising the core learning goals.
 
 ### D11 — Authentication deferred, and never custom
 
@@ -86,7 +88,9 @@ No authentication initially. When multi-user behavior is actually needed, Supaba
 
 Custom password authentication is not implemented under any circumstances.
 
-Trigger for Phase 12: persistent user accounts, private repositories, per-user history, or per-user quotas. Until then the posture is public repositories only, IP-based rate limiting if exposed, and a deployment that is not publicly reachable.
+**Current exposure:** the demo API is **publicly reachable** at `https://api.airepoagent.app` without auth (D28). That elevates the no-auth debt: prefer Phase 12 soon, or temporarily restrict the ALB SG / add a shared secret, rather than treating the open API as production.
+
+Trigger for Phase 12: persistent user accounts, private repositories, per-user history, per-user quotas, or continued public exposure without other access controls.
 
 ### D12 — Langfuse and OpenTelemetry, from Phase 13
 
@@ -214,9 +218,9 @@ Consequence: deploying the app to ECS does not satisfy Phase 10 sandbox requirem
 
 ### D26 — Phase 14 subset early (14a vs 14b)
 
-Minimal ECR/ECS/ALB/ElastiCache deploy is intentional **Phase 14a** work, done as part of the deploy track after Phase 9. Full Phase 14 definition of done (**14b**) — OIDC CI, IAM hardening, documented networking/cost, O7 pooler verification — completes after the first successful cloud E2E run.
+Minimal ECR/ECS/ALB/ElastiCache deploy is intentional **Phase 14a** work, done as part of the deploy track after Phase 9. Full Phase 14 definition of done (**14b**) — OIDC CI, IAM hardening, documented networking/cost, O7 pooler verification, and access control for the public API — completes after the first successful cloud E2E run.
 
-**Status:** 14a delivered and E2E-verified. 14b remains open. Consequence: "Phase 14 complete" in the roadmap still means 14a **and** 14b.
+**Status:** 14a delivered and E2E-verified (including HTTPS hostname). 14b remains open. Consequence: "Phase 14 complete" in the roadmap still means 14a **and** 14b.
 
 ### D27 — Dedicated VPC; public ECS egress without NAT (14a, cost-optimized)
 
@@ -231,6 +235,20 @@ Rationale: keep a dedicated VPC and ALB-fronted API; drop NAT hourly/data charge
 Rejected permanently for this deploy: default VPC. Accepted tradeoff vs original private+NAT layout: larger attack surface, mitigated by SG rules — appropriate for demo, revisit for production hardening (14b).
 
 Consequence: cheaper ongoing network cost; document SG discipline carefully. Inventory: [infrastructure/aws/README.md](../infrastructure/aws/README.md).
+
+### D28 — Public HTTPS demo hostname (`api.airepoagent.app`)
+
+The demo API is served at **`https://api.airepoagent.app`**.
+
+- Domain `airepoagent.app` via Vercel; Vercel DNS authoritative (`ns1`/`ns2.vercel-dns.com`)
+- ACM public certificate for `api.airepoagent.app` (DNS validation, RSA 2048, **ISSUED**)
+- Vercel traffic CNAME: `api` → `ai-agent-alb-1520727908.eu-north-1.elb.amazonaws.com`
+- ACM validation CNAME retained for ownership/renewal — **not** the traffic record; do not remove it
+- ALB terminates HTTPS; targets remain HTTP :8000 to ECS
+
+Rationale: shareable demo URL with TLS without building a frontend. Rejected for now: Cloudflare proxy in front, or terminating TLS elsewhere.
+
+Consequence: API is on the public Internet without Phase 12 auth — accepted demo risk; repay with auth or network restriction (see D11 debt). Inventory: [infrastructure/aws/README.md](../infrastructure/aws/README.md).
 
 ## Open items
 
@@ -302,7 +320,7 @@ Vectors are namespaced per task workspace (`task-{task_id}`), not per repository
 | Concurrent workers racing the same pending task | Phase 9 | Two processes may both see `pending`, double-clone/index into `task-{task_id}`; retry can mix SHAs | Atomic status claim, advisory lock, and/or `delete_namespace` before upsert (deferred; see [phases/phase-09.md](phases/phase-09.md)) |
 | Ephemeral workspaces on Fargate | Deploy track (D23) | Clones lost on ECS task restart | EFS or worker volume (Phase 14b/15) |
 | Public-subnet ECS (no NAT) for demo egress | Deploy track (D27) | Tasks have public IPs; larger attack surface than private+NAT | Private ECS + NAT/VPC endpoints if production hardening requires it (14b) |
-| No authentication | Phase 1 | Anyone with network access can invoke the API | Phase 12, or on public exposure |
+| No authentication on public HTTPS demo | Phase 1 / D28 | Anyone who can reach `api.airepoagent.app` can invoke the API | Phase 12, interim ALB IP allow-list, or other access control |
 | Public repositories only | Phase 4 | Cannot handle private repositories | Phase 12 |
 | Single evaluation fixture | Phase 6 | Benchmark may overfit to one repository's structure; informal live runs documented in [agent-optimization.md](agent-optimization.md) | See O6 |
 | `.context/` excluded from version control | Phase 1 | Reference PDFs and the fixture archive are not tracked | Not planned; they are large binaries, not source |

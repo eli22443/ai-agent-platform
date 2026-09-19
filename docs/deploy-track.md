@@ -4,7 +4,7 @@
 
 Canonical guide for deploying the AI Agent Platform to AWS after Phases 8–9. Intentional roadmap reorder: learn ECS, workers, and Redis in production before Phase 10 (Docker sandbox).
 
-**Status: 14a complete.** Steps A–E are done (code, Supabase, containerize, AWS Console deploy, E2E). Live inventory and runbook: [infrastructure/aws/README.md](../infrastructure/aws/README.md). Next: Phase 10 (sandbox) and/or **14b** hardening.
+**Status: 14a complete.** Steps A–E are done (code, Supabase, containerize, AWS Console deploy, E2E). Public HTTPS at `https://api.airepoagent.app`. Live inventory and runbook: [infrastructure/aws/README.md](../infrastructure/aws/README.md). Next: Phase 10 (sandbox) and/or **14b** hardening (auth for the public API, OIDC CI, etc.).
 
 Rationale:
 
@@ -13,7 +13,7 @@ Rationale:
 - O1 (Docker in WSL) blocked Phase 10 locally; the deploy track did not depend on fixing O1 for app images.
 - Minimal AWS deploy is **14a** (D23, D26). Full Phase 14 (**14b**) remains after this baseline.
 
-See [decisions.md](decisions.md) D23–D27.
+See [decisions.md](decisions.md) D23–D28.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ See [decisions.md](decisions.md) D23–D27.
 | Supabase + migrations | Complete (cloud `DATABASE_URL`) |
 | Pinecone index + OpenAI key | Complete |
 | Container image (`backend/Dockerfile`, compose) | Complete |
-| AWS (`eu-north-1`) — ECR, ECS, ALB, ElastiCache, Secrets, VPC (no NAT) | Complete (14a) |
+| AWS (`eu-north-1`) — ECR, ECS, ALB, ElastiCache, Secrets, VPC (no NAT), HTTPS `api.airepoagent.app` | Complete (14a) |
 
 ## What stays external
 
@@ -40,7 +40,7 @@ See [decisions.md](decisions.md) D23–D27.
 
 ```mermaid
 flowchart TD
-    Client["Client / Swagger UI"] -->|HTTP :80| ALB["ALB public subnets"]
+    Client["Client / Swagger UI"] -->|HTTPS :443| ALB["ALB public subnets"]
     ALB -->|:8000| API["ECS Fargate API public"]
     API -->|enqueue| Redis[("ElastiCache Redis private")]
     API --> Supabase[("Supabase PostgreSQL")]
@@ -53,6 +53,7 @@ flowchart TD
     API --> IGW["Internet Gateway"]
     Worker --> IGW
     IGW --> Internet["Internet"]
+    DNS["Vercel DNS api.airepoagent.app"] --> ALB
     API --> CW["CloudWatch Logs"]
     Worker --> CW
 ```
@@ -63,7 +64,7 @@ flowchart TD
 - **Redis** = ElastiCache in **private** subnets only; **Postgres** = Supabase via Secrets Manager.
 - Workspaces on ephemeral Fargate disk (accepted debt; EFS deferred).
 - Fargate size: **0.25 vCPU / 0.5 GB** each (API + worker).
-
+- **Public HTTPS:** `https://api.airepoagent.app` via ACM on the ALB and Vercel DNS CNAME (D28).
 Details and resource names: [infrastructure/aws/README.md](../infrastructure/aws/README.md).
 
 ## Environment matrix
@@ -97,7 +98,8 @@ Console-first deploy in `eu-north-1`. Record: [infrastructure/aws/README.md](../
 | VPC | Dedicated VPC, public + private subnets; **no NAT Gateway** |
 | ECR | `ai-agent-platform:latest` |
 | ECS Fargate | API + worker, 0.25 vCPU / 0.5 GB, **public** subnets, public IP on |
-| ALB | Internet-facing HTTP :80, SG locked to operator IP |
+| ALB | Internet-facing **HTTPS :443** (ACM `api.airepoagent.app`), public demo access |
+| DNS | Vercel DNS: `api` CNAME → ALB; ACM validation CNAME retained |
 | ElastiCache | `cache.t4g.micro`, private subnets only, TLS in transit off |
 | Secrets Manager | `ai-agent-platform/app` |
 | CloudWatch | `/ecs/ai-agent-api`, `/ecs/ai-agent-worker` |
@@ -109,7 +111,8 @@ Checklist below passed (example `task_id` `feccdcfc-6635-449d-921b-247f3c0b3d12`
 ### F — Phase 14 hardening (14b) — **not started**
 
 - GitHub Actions + OIDC deploy to ECR/ECS
-- Tighter IAM; HTTPS/ACM; networking/cost docs (NAT already removed; revisit private ECS if needed)
+- Tighter IAM; **auth / access control** for the public HTTPS API (Phase 12 or interim restriction)
+- Networking/cost docs (NAT already removed; revisit private ECS if needed)
 - Supabase pooler verification (O7); optional Redis `rediss://`
 
 ### G — Return to Phase 10
@@ -136,14 +139,15 @@ Deploy-track **14a goals are met**. Resume [roadmap.md](roadmap.md) Phase 10 whe
 
 Full posture: [security.md](security.md#first-cloud-deploy-posture).
 
-- ALB SG: operator IP only (no Phase 12 auth)
+- ALB publicly reachable over **HTTPS** at `https://api.airepoagent.app` (no Phase 12 auth yet — accepted demo risk)
 - API only from ALB SG (not `0.0.0.0/0`); worker inbound none; Redis only from API + worker SGs
 - Public-subnet ECS with public IPs for egress; credentials only in Secrets Manager
 - Supabase/OpenAI/Pinecone over TLS from the app’s perspective
+- ACM validation CNAME kept in Vercel DNS (renewal); separate from the traffic `api` CNAME
 
 ## Verification checklist
 
-- [x] `GET /health` via ALB returns `{"status":"ok"}`
+- [x] `GET /health` via ALB / `https://api.airepoagent.app` returns `{"status":"ok"}`
 - [x] `POST /tasks` returns **202** with `task_id` / `pending` (or `running`)
 - [x] `GET /tasks/{task_id}` reaches `completed` with a non-empty `result`
 - [x] Supabase `tasks` / `agent_runs` / `tool_calls` populated
@@ -174,5 +178,5 @@ Phases 8 → 9 → Deploy track 14a (done) → Phase 10 → 11 → … → Phase
 | [infrastructure/aws/README.md](../infrastructure/aws/README.md) | **As-deployed** 14a inventory and ops |
 | [roadmap.md](roadmap.md) | Phase index; 14a/14b split |
 | [architecture.md](architecture.md) | Cloud topology |
-| [decisions.md](decisions.md) | D23–D27 |
+| [decisions.md](decisions.md) | D23–D28 |
 | [phases/phase-09.md](phases/phase-09.md) | Worker / queue spec |

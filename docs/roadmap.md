@@ -50,9 +50,9 @@ Phases 8 → 9 → Deploy track 14a (done) → Phase 10 → 11 → … → Phase
 | Step | What | Notes |
 | --- | --- | --- |
 | 8 + 9 | Retrieval + async worker | Complete |
-| Deploy track / 14a | Dockerize + AWS Console deploy | **Complete** — dedicated VPC, public ECS (no NAT), ALB, ElastiCache, Secrets (D24, D27) |
+| Deploy track / 14a | Dockerize + AWS Console deploy | **Complete** — VPC, public ECS (no NAT), ALB HTTPS `api.airepoagent.app`, ElastiCache, Secrets (D24, D27, D28) |
 | 10 | Docker sandbox | Next when O1 allows; not blocked by 14a |
-| 14b | Full Phase 14 DoD | OIDC CI, IAM hardening, HTTPS, O7, networking hardening |
+| 14b | Full Phase 14 DoD | OIDC CI, IAM hardening, public-API auth/access control, O7 |
 
 Phase 10 is security-critical for code execution but is **not required** for the read-only agent already in cloud. App image ≠ sandbox image (D25).
 
@@ -298,11 +298,11 @@ This phase is **split** because the deploy track (D23, D26) intentionally delive
 
 **Objective.** Containerize and run API + worker on AWS with external Supabase Postgres.
 
-**Concepts.** Container builds, ECR, ECS Fargate, ALB health checks, ElastiCache Redis, Secrets Manager, CloudWatch, dedicated VPC with public ECS egress / no NAT (D27).
+**Concepts.** Container builds, ECR, ECS Fargate, ALB health checks, ElastiCache Redis, Secrets Manager, CloudWatch, dedicated VPC with public ECS egress / no NAT (D27), public HTTPS hostname (D28).
 
 **Files.** `backend/Dockerfile`, `docker-compose.yml`, `infrastructure/aws/README.md` (as-deployed runbook).
 
-**As deployed (`eu-north-1`).** ECR `ai-agent-platform`; ECS API + worker (0.25 vCPU / 0.5 GB, public subnets, public IP on); ALB HTTP :80 IP-restricted; ElastiCache in private subnets; Secrets Manager; Supabase `DATABASE_URL`.
+**As deployed (`eu-north-1`).** ECR `ai-agent-platform`; ECS API + worker (0.25 vCPU / 0.5 GB, public subnets, public IP on); ALB **HTTPS :443** at `https://api.airepoagent.app` (ACM + Vercel DNS); ElastiCache in private subnets; Secrets Manager; Supabase `DATABASE_URL`.
 
 **Definition of done (14a).** Met: non-root image; separate API/worker services; secrets at runtime; `POST /tasks` → 202 and worker E2E against Supabase/Pinecone/OpenAI; [deploy-track.md](deploy-track.md) checklist passed. See [infrastructure/aws/README.md](../infrastructure/aws/README.md).
 
@@ -316,7 +316,9 @@ Guide: [deploy-track.md](deploy-track.md).
 
 **Files.** `.github/workflows/{tests,deploy}.yml`, expanded `infrastructure/aws/` documentation.
 
-**Definition of done (14b).** GitHub Actions authenticates to AWS through OIDC with no stored access keys; deployment happens only after tests pass; health checks drive load balancer registration; deployment architecture, networking, IAM, and cost considerations are fully documented; O7 resolved for Supabase pooler if used.
+**Definition of done (14b).** GitHub Actions authenticates to AWS through OIDC with no stored access keys; deployment happens only after tests pass; health checks drive load balancer registration; deployment architecture, networking, IAM, and cost considerations are fully documented; O7 resolved for Supabase pooler if used; public demo API has auth or equivalent access control (Phase 12 or interim).
+
+HTTPS/ACM for `api.airepoagent.app` is already done in 14a (D28).
 
 **Commit.** `feat: add OIDC deployment pipeline and AWS hardening`
 
@@ -342,7 +344,7 @@ Phase 14 is **not complete** until both 14a and 14b are done.
 
 | Item | Status |
 | --- | --- |
-| Frontend application | Out of scope. Swagger UI is the demonstration surface. No Next.js, no Vercel. |
+| Frontend application | Out of scope as a product. Static demo + Swagger; Vercel used for domain/DNS only (D10/D28). |
 | LangChain or LangGraph | Deferred. Trigger condition recorded in [decisions.md](decisions.md). |
 | tree-sitter AST analysis | Deferred. Revisit if chunking or symbol resolution proves insufficient after Phase 8. |
 | Task status SSE | Deferred until after Phase 9 short poll is stable (post–deploy track or Phase 15 polish). Optional `GET /tasks/{task_id}/events`; plain GET remains source of truth. Long poll rejected. See [phase-09.md](phases/phase-09.md). |

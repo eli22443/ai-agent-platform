@@ -186,7 +186,8 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    Client["Client"] -->|HTTP :80| ALB["ALB public subnets"]
+    Client["Client"] -->|HTTPS :443| ALB["ALB public subnets"]
+    DNS["api.airepoagent.app Vercel DNS"] --> ALB
     ALB --> API["ECS Fargate API public"]
     API -->|enqueue| Redis[("ElastiCache Redis private")]
     API --> DB[("Supabase PostgreSQL")]
@@ -199,11 +200,11 @@ flowchart TD
 ```
 
 - Dedicated VPC + **public** Fargate tasks with public IPs + **IGW** egress; **no NAT** (D27, cost-optimized). Redis stays private.
+- **Public HTTPS** at `https://api.airepoagent.app` (ACM on ALB, Vercel DNS) (D28).
 - **Two ECS services** share one ECR image; API = Uvicorn, worker = ARQ (D25 ≠ sandbox image).
 - **Workspaces** on ephemeral task disk in v1 (accepted debt).
-- **Secrets** from Secrets Manager; worker has no inbound ports; API inbound from ALB SG only; ALB SG IP-restricted.
-- Phase 14: **14a done**; **14b** (OIDC CI, IAM hardening, HTTPS, O7) still open (D26).
-
+- **Secrets** from Secrets Manager; worker has no inbound ports; API inbound from ALB SG only.
+- Phase 14: **14a done** (incl. HTTPS hostname); **14b** (OIDC CI, IAM hardening, public-API auth/access control, O7) still open (D26).
 ## Data model sketch
 
 Introduced in Phase 3, extended in Phase 7, and extended again in the optional Phase 12. Column lists are indicative, not final; the authoritative schema is whatever Alembic migrations define.
@@ -324,7 +325,7 @@ These are project constraints. They are not defaults to be revisited casually. C
 | Sandbox | Docker | Not before Phase 10; no unrestricted host shell execution ever |
 | Auth | Supabase Auth with JWT, optional | Not before Phase 12; no custom password authentication |
 | Observability | Langfuse and OpenTelemetry | Not before Phase 13 |
-| Frontend | None | No Next.js, no Vercel; Swagger UI is the demonstration surface |
+| Frontend | None as product | Co-located static demo + Swagger; domain DNS may use Vercel (D10/D28); no Next.js app |
 | Cloud | AWS for application infrastructure | Managed third-party services remain external |
 
 The last row deserves emphasis: "use AWS" means the application's own infrastructure is deployed on AWS. It does not mean every third-party service must be replaced with an AWS equivalent. Supabase, Pinecone, OpenAI, and GitHub remain external services.

@@ -9,9 +9,9 @@ Instruction: Find why the authentication tests are failing and explain how to fi
 
 ## Status
 
-Phases 1–9 are complete. **Deploy track 14a is live on AWS** (`eu-north-1`): ECS API + worker (public subnets, no NAT), ALB, ElastiCache, Secrets Manager, dedicated VPC. Runbook: [infrastructure/aws/README.md](infrastructure/aws/README.md). Guide: [docs/deploy-track.md](docs/deploy-track.md).
+Phases 1–9 are complete. **Deploy track 14a is live on AWS** (`eu-north-1`): public HTTPS at [`https://api.airepoagent.app`](https://api.airepoagent.app), ECS API + worker (public subnets, no NAT), ALB, ElastiCache, Secrets Manager. Runbook: [infrastructure/aws/README.md](infrastructure/aws/README.md). Guide: [docs/deploy-track.md](docs/deploy-track.md).
 
-Next: Phase 10 (Docker sandbox, needs O1) and/or Phase 14b (OIDC CI, HTTPS, hardening). Spec: [docs/phases/phase-09.md](docs/phases/phase-09.md). Live-run notes: [docs/agent-optimization.md](docs/agent-optimization.md).
+Next: Phase 10 (Docker sandbox, needs O1) and/or Phase 14b (OIDC CI, auth/access control for the public API, hardening). Spec: [docs/phases/phase-09.md](docs/phases/phase-09.md). Live-run notes: [docs/agent-optimization.md](docs/agent-optimization.md).
 
 ## What it does
 
