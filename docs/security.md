@@ -1,164 +1,68 @@
 # Security
 
-## Status
+Living threat model. **Not** a claim of production hardening — the public demo has **no app auth**.
 
-Living document. Controls are designed ahead of implementation and updated when exposure changes. Implemented through Phase 7: configuration hygiene; repository URL/SSRF validation and clone limits (Phase 4); workspace path confinement and tool validation (Phase 5); agent iteration/timeout/token limits and treating repository text as untrusted data in the system prompt (Phase 6); persisted `agent_runs` / `tool_calls` audit trail with truncated argument storage (Phase 7). Controls still scheduled appear in the "Introduced" column (sandbox, auth, etc.).
+**Implemented (1–9 + 14a):** secrets hygiene; URL/SSRF + clone limits; path/symlink confinement; tool + agent limits; untrusted framing in prompts; `agent_runs` / `tool_calls` audit; HTTPS demo on AWS.
 
-## Central premise
+## Implemented vs planned
 
-A repository supplied by a user is untrusted input in two distinct ways, and conflating them is the most common way to get this class of system wrong.
-
-1. **As code.** Repository contents may be malicious. Executing tests means executing arbitrary code written by someone else.
-2. **As text.** Repository contents enter the model's context. A file can contain text crafted to look like instructions to an AI agent.
-
-The platform must be safe under the assumption that both are hostile simultaneously.
-
-A third premise follows from the architecture: the model is not a trusted component. It produces tool calls and arguments, and those arguments are attacker-influenceable whenever repository content is in context. Every tool validates its own inputs regardless of the fact that a model produced them.
-
-## Threat model
-
-### Malicious repository code execution
-
-Executing repository code on the application host would expose the filesystem, environment variables including API keys, the database connection, cloud instance credentials, and the internal network.
-
-Controls: all execution of repository code happens inside a Docker sandbox with no application secrets present in its environment. No unrestricted host shell is exposed to the agent at any phase. Until the sandbox exists in Phase 10, no tool executes repository code at all, which is why `run_tests` is a Phase 10 tool and not a Phase 5 convenience.
-
-Sandbox requirements: CPU and memory limits, execution timeout, filesystem isolation with only the workspace mounted, restricted or disabled networking, a non-root user, no privileged containers, no Docker socket mount, read-only root filesystem where practical, and guaranteed cleanup of containers and volumes.
-
-Introduced: Phase 10.
-
-### Server-side request forgery through the repository URL
-
-The repository URL is user-supplied and is handed to a network client. Without validation it can be pointed at cloud instance metadata endpoints, internal services, or local addresses.
-
-Controls: accept only `https://` from an allow-list of known hosts (D20); reject `git://`, `file://`, `ssh://`, and scp-style syntax; resolve the hostname and reject private, loopback, link-local, and unique-local address ranges, including the cloud metadata address; re-check after DNS resolution to reduce rebinding exposure; disable redirect following to unvalidated hosts; and apply a clone timeout and size cap. Validation lives in the repository service so there is exactly one entry point to audit.
-
-Introduced: Phase 4, hardened in Phase 15.
-
-### Prompt injection from repository content
-
-A file such as a README or a source comment can contain text addressed to an AI agent. The realistic goals of such an injection are to make the agent exfiltrate data, call a mutating tool, or produce a misleading answer.
-
-Controls, in order of actual effectiveness:
-
-1. Capability restriction. An injection can only cause damage through tools the run was granted. Read-only runs cannot write, and no run can reach outside its workspace. This is the real defense.
-2. Content framing. Repository content is inserted into the context as clearly delimited data, never as instructions.
-3. System prompt instruction to treat repository text as data. Useful, but a mitigation rather than a boundary; it is not relied upon.
-4. Egress restriction in the sandbox, so an injection that does reach a command cannot post data outward.
-5. Run inspection. Every tool call is recorded, so anomalous behavior is visible after the fact.
-
-The platform does not assume prompt injection can be prevented. It assumes it will succeed occasionally and limits what a successful injection can reach.
-
-Introduced: Phase 5 onward, with egress control in Phase 10.
-
-### Path traversal and workspace escape
-
-Every tool that accepts a path receives it from the model, and the model may be influenced by repository content. A path such as `../../.env` or an absolute path targets application secrets.
-
-Controls: resolve the path against the task's workspace root, fully resolve symlinks, and verify the result is still inside the root before any I/O; reject absolute paths and parent-directory traversal outright rather than normalizing them away; refuse to follow symlinks that point outside the workspace, since a cloned repository can contain them; and centralize this check in one helper that every tool uses, because a per-tool reimplementation is where this bug appears.
-
-Introduced: Phase 5.
-
-### Secret exposure
-
-Secrets can leak into logs, into the model's context, into database records, into API responses, and into the sandbox environment.
-
-Controls: secrets come from environment variables only and are never committed, with `.env` git-ignored and a `.env.example` carrying names but no values; the sandbox receives an explicit minimal environment with no platform credentials; no credential is ever written to a database record; logs redact known secret patterns and never log full request bodies containing credentials; error responses expose a correlation identifier rather than internal detail; and repository content that appears to contain credentials is not echoed back verbatim in results.
-
-Introduced: Phase 1 for configuration hygiene, extended each phase that adds a credential.
-
-### Resource exhaustion
-
-A large or hostile repository can exhaust disk, and an unbounded agent run can exhaust budget.
-
-Controls: clone depth and size limits with a timeout; per-task disk quota; workspace cleanup on completion and a sweeper for abandoned workspaces; agent iteration, wall-clock, and token limits as described in [agent-design.md](agent-design.md); tool output truncation; and sandbox CPU, memory, process, and time limits.
-
-Cost is a security property here, not merely an operational one: an attacker who can trigger unbounded agent runs against a paid API has found a financial denial-of-service.
-
-Introduced: Phase 4 for disk, Phase 6 for run limits, Phase 10 for execution limits, Phase 15 for quotas.
-
-### Unauthenticated exposure
-
-The initial platform has no authentication by design. Anything reachable can be invoked by anyone who can reach it.
-
-Controls: the demo API is already publicly reachable over HTTPS without auth (D28) — apply IP-based rate limiting and a global concurrency cap on agent runs; accept only public repositories; and expose no endpoint that reveals another caller's task content. Authentication in Phase 12 replaces this posture rather than supplementing it. Until then, treat public exposure as an accepted demo risk, not multi-tenant readiness.
-
-Introduced: Phase 15, or earlier if the API is exposed.
-
-### Supply chain execution during dependency installation
-
-Installing a repository's dependencies executes third-party code, and package build scripts run arbitrary commands. This is a distinct risk from running the repository's own code because it pulls in code from the network.
-
-Controls: install only inside the sandbox, never on the host or in the application image; treat installation as untrusted execution with the same limits; and restrict network egress to the package registry when installation is required at all.
-
-Introduced: Phase 10.
-
-### Unintended repository modification
-
-Once the agent can write files, a bad run can damage a user's work.
-
-Controls: all modification happens in the platform's own isolated clone, never in a user-owned checkout; changes are never pushed automatically; the result of a modification run is a reviewable diff that the user inspects before anything is applied upstream; and write tools remain outside the granted tool set for analysis-only runs.
-
-Introduced: Phase 11.
-
-### Authorization gaps once multi-user
-
-Adding user accounts without per-resource authorization checks creates direct object reference vulnerabilities across tasks and repositories.
-
-Controls: every user-owned resource carries an owner column and every read and write path filters on the authenticated principal; authorization is enforced in the service layer rather than in individual routes; JWT verification uses the provider's published keys with signature, issuer, audience, and expiry all checked; and per-user quotas are enforced. Custom password authentication is not implemented under any circumstances.
-
-Introduced: Phase 12.
-
-## Control summary
-
-| Control | Introduced |
-| --- | --- |
-| Secrets from environment only, `.env` git-ignored | Phase 1 |
-| Repository URL validation and SSRF protection | Phase 4 |
-| Clone size, depth, and timeout limits | Phase 4 |
-| Workspace path confinement for all file tools | Phase 5 |
-| Tool input validation and output truncation | Phase 5 |
-| Agent iteration, wall-clock, and token limits | Phase 6 |
-| Full tool-call audit trail | Phase 7 |
-| Docker sandbox with resource and network limits | Phase 10 |
-| Read-only versus mutating tool separation enforced | Phase 11 |
-| No automatic push to user repositories | Phase 11 |
-| Authentication, authorization, and per-user quotas | Phase 12 |
-| Secret redaction in structured logs and traces | Phase 13 |
-| Secrets from AWS Secrets Manager or Parameter Store | Phase 14 |
-| Rate limiting, idempotency, workspace sweeper, cost controls | Phase 15 |
-
-## Deployment security
-
-For Phase 14 on AWS: no long-lived credentials in the application, using task roles instead; GitHub Actions authenticating through OIDC rather than stored access keys; secrets from Secrets Manager or Parameter Store injected at runtime; containers running as a non-root user; the database reachable only from the application security group; and CloudWatch retaining logs with redaction applied at the source.
-
-Phase 14 is split into **14a** (minimal deploy, deploy track) and **14b** (full hardening). See [roadmap.md](roadmap.md) and [deploy-track.md](deploy-track.md).
-
-## First cloud deploy posture
-
-Applies to the deploy track after Phase 9 (D23). Phase 12 authentication does not exist yet.
-
-| Control | Requirement |
-| --- | --- |
-| ALB / public URL | Demo is publicly reachable at `https://api.airepoagent.app` (ACM + Vercel DNS → ALB). No application auth yet — accepted demo risk (D28). Prefer rate limiting / concurrency caps; add Phase 12 or restrict the ALB before treating as multi-tenant. |
-| TLS | Terminate HTTPS on the ALB with ACM cert for `api.airepoagent.app`. Keep the ACM DNS validation CNAME in Vercel DNS for renewal. |
-| ECS placement | API and worker may run in public subnets with public IPs for egress (no NAT). That does **not** authorize opening the app port to the Internet — API SG must allow the app port only from the ALB SG. |
-| Supabase | Connect over TLS (`?sslmode=require` on `DATABASE_URL`). Credentials only in Secrets Manager, never in images or git. |
-| Worker service | No inbound security group rules; outbound only to Redis, Supabase, OpenAI, Pinecone, and GitHub. |
-| Redis | Private subnets only; SG allows 6379 only from API and worker SGs. |
-| Secrets parity | Worker receives the same secret set as API (database, LLM, Pinecone, Redis). |
-| Audit | Phase 7 `agent_runs` / `tool_calls` rows remain the post-hoc inspection surface. |
-| Verification | [deploy-track.md](deploy-track.md#verification-checklist) passed for 14a; inventory in [infrastructure/aws/README.md](../infrastructure/aws/README.md). |
-
-Until Phase 12, treat the deployment as a **public demonstration environment without auth**, not a multi-tenant product.
-
-## Known accepted risks
-
-| Risk | Rationale | Revisit |
+| Control | Status | Where |
 | --- | --- | --- |
-| No authentication; API publicly on HTTPS | Demo hostname `api.airepoagent.app` (D28); learning deploy | Phase 12, or interim ALB restriction / shared secret |
-| Public repositories only | Avoids handling third-party repository credentials before authorization exists | Phase 12 |
-| Prompt injection cannot be fully prevented | Mitigated by capability restriction rather than eliminated | Continuous |
-| Docker unavailable in the current WSL environment | Blocks Phase 10; Phases 1 through 9 are unaffected | Before Phase 10 |
+| Secrets from env / Secrets Manager | Yes | `.env` ignored; SM in 14a |
+| URL allow-list / SSRF | Yes | `url_validation.py` |
+| Clone size / depth / timeout | Yes | repository service |
+| Path confinement + symlink refuse | Yes | `tools/paths.py` |
+| Tool validation / output caps | Yes | tool layer |
+| Agent iteration / time / token limits | Yes | `agent/limits.py` |
+| Tool-call audit trail | Yes | DB |
+| Prompt injection → capability limits | Partial | read-only tools |
+| Docker sandbox | No | Phase 10 |
+| Auth / authz | No | Phase 12 |
+| Log redaction / OTel | No | Phase 13 |
+| OIDC CI + IAM harden | No | Phase 14b |
+| Rate limits / quotas | No | Phase 15 |
 
-The last row is the one to watch. Because `run_tests` and `run_command` require the sandbox, and Phase 11 code modification requires `run_tests`, the absence of Docker gates the second half of the roadmap. The correct response is to resolve the environment before Phase 10, not to substitute host execution. An interim local executor would not be an isolation boundary, and shipping one under the name "sandbox" would be worse than having no sandbox at all, because it would imply a guarantee that does not exist.
+## Premises
+
+1. Repo is hostile **as code** and **as text** (prompt injection).
+2. The model is not trusted — every tool validates its own args.
+
+## Threats (compact)
+
+| Threat | Controls | Phase |
+| --- | --- | --- |
+| Host code exec | No exec tools until Docker sandbox (CPU/mem/net/timeout, no secrets) | 10 |
+| SSRF via clone URL | `https` + host allow-list; reject private/loopback/metadata; timeout/size | 4 |
+| Prompt injection | Capability restriction (primary); data framing; audit; sandbox egress later | 5+ / 10 |
+| Path escape | Resolve under workspace; reject `..` / absolute; refuse escaping symlinks | 5 |
+| Secret leak | Env/SM only; never in git/DB; correlation IDs in errors | 1+ |
+| Resource / cost DoS | Clone + agent limits; quotas later | 4, 6, 15 |
+| Unauthenticated API | Public demo accepted (D28); rate limits / auth later | 12 / 15 |
+| Dep install / supply chain | Only inside sandbox | 10 |
+| Unwanted git push | Isolated clone; reviewable diff; no auto-push | 11 |
+| IDOR when multi-user | Owner column + service-layer checks | 12 |
+
+## Cloud demo posture (14a)
+
+| Item | Posture |
+| --- | --- |
+| URL | `https://api.airepoagent.app` — no app auth |
+| TLS | ALB + ACM |
+| ECS | Public subnets OK for egress; **API port only from ALB SG** |
+| Worker | No inbound; outbound to Redis/DB/APIs/GitHub |
+| Redis | Private; 6379 from API/worker SGs only |
+| Supabase | TLS; creds in Secrets Manager |
+| Audit | `agent_runs` / `tool_calls` |
+
+Treat as a **public demo**, not multi-tenant. Checklist: [deploy-track.md](deploy-track.md); inventory: [aws README](../infrastructure/aws/README.md).
+
+## Accepted risks
+
+| Risk | Revisit |
+| --- | --- |
+| No auth on public HTTPS | Phase 12 / ALB restrict |
+| Public repos only | Phase 12 |
+| Prompt injection not fully preventable | Continuous (capability limits) |
+| No local Docker → Phase 10 blocked | Before sandbox work |
+
+Do **not** fake a sandbox with host execution.

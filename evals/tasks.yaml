@@ -1,0 +1,166 @@
+# Evaluation tasks (resume polish harness)
+#
+# Fixture: pinned public GitHub repository (no large zip committed).
+# The historical `.context/stock-market-master.zip` fixture remains optional/local;
+# see docs/evaluation.md.
+
+fixture:
+  repository_url: "https://github.com/microsoft/python-sample-vscode-fastapi-tutorial"
+  commit_sha: "225de1e5afe435f1f1ea431c8742f1fe1dc2282f"
+  notes: >
+    Small public FastAPI sample used in deploy-track E2E verification.
+    Pinning a commit documents reproducibility; the live clone uses the
+    repository default branch tip unless the platform gains commit pinning.
+
+tasks:
+  # --- Analysis / structure ---
+  - id: A1
+    category: analysis
+    instruction: >
+      Explain how this FastAPI application is structured. Identify the main
+      entry-point module, how the app object is created, and where request
+      handlers live. Cite concrete file paths. Do not modify any files.
+    expect_paths:
+      - main.py
+    must_mention:
+      - FastAPI
+    grading: human_or_heuristic
+
+  - id: A2
+    category: analysis
+    instruction: >
+      Where are the data models defined, and what fields do they expose?
+      Cite file paths. Do not modify any files.
+    expect_paths:
+      - models.py
+    grading: human_or_heuristic
+
+  - id: A3
+    category: analysis
+    instruction: >
+      List the Python package dependencies declared for this project and briefly
+      what each is used for. Prefer reading the dependency file rather than guessing.
+      Do not modify any files.
+    expect_paths:
+      - requirements.txt
+    grading: human_or_heuristic
+
+  - id: A4
+    category: analysis
+    instruction: >
+      How is the application intended to be started for local development?
+      Mention the ASGI entrypoint if present. Cite file paths from the README
+      or source. Do not modify any files.
+    expect_paths:
+      - README.md
+      - main.py
+    must_mention:
+      - uvicorn
+    grading: human_or_heuristic
+
+  - id: A5
+    category: analysis
+    instruction: >
+      Summarize the HTTP routes this API exposes (methods and paths) and which
+      functions handle them. Cite file paths. Do not modify any files.
+    expect_paths:
+      - main.py
+    grading: human_or_heuristic
+
+  # --- Localization / retrieval ---
+  - id: L1
+    category: localization
+    instruction: >
+      Find every place where authentication or authorization is enforced in this
+      repository. If none exists, say so clearly and do not invent middleware or
+      dependencies. Cite file paths for any real hits. Do not modify any files.
+    expect_absent_claim: true
+    grading: human_or_heuristic
+
+  - id: L2
+    category: localization
+    instruction: >
+      Where is rate limiting implemented, if anywhere? If it is not implemented,
+      say so explicitly rather than inventing a module. Do not modify any files.
+    expect_absent_claim: true
+    grading: human_or_heuristic
+
+  - id: L3
+    category: localization
+    instruction: >
+      Locate the database / persistence helper used by the API (for example any
+      flush or session helper). Cite the file path and briefly describe what it
+      does. Do not modify any files.
+    expect_paths:
+      - flushdb.py
+    grading: human_or_heuristic
+
+  - id: L4
+    category: localization
+    instruction: >
+      Which GitHub Actions or CI workflows are present, and what do they do at a
+      high level? Cite paths under .github if present. Do not modify any files.
+    expect_paths:
+      - .github
+    grading: human_or_heuristic
+
+  # --- Multi-file / semantic ---
+  - id: M1
+    category: multi_file
+    instruction: >
+      Trace how a create/update request flows from an HTTP handler in main.py to
+      the model definitions. Name the key functions and types involved and cite
+      paths. Do not modify any files.
+    expect_paths:
+      - main.py
+      - models.py
+    grading: human_or_heuristic
+
+  - id: M2
+    category: multi_file
+    instruction: >
+      Using both lexical and conceptual clues, explain how student or course-like
+      domain objects (if any) are represented and returned by the API. If the
+      domain is different, describe the actual domain accurately. Cite paths.
+      Do not modify any files.
+    expect_paths:
+      - models.py
+      - main.py
+    grading: human_or_heuristic
+
+  # --- Insufficient context / honesty ---
+  - id: I1
+    category: insufficient_context
+    instruction: >
+      Does this repository implement OAuth2 password grant with refresh tokens?
+      Answer based only on evidence in the repository. If there is insufficient
+      evidence, say so. Do not invent files. Do not modify any files.
+    expect_absent_claim: true
+    grading: human_or_heuristic
+
+  - id: I2
+    category: insufficient_context
+    instruction: >
+      What is the production Kubernetes Helm chart path for this service? If the
+      repository does not contain one, say that clearly. Do not modify any files.
+    expect_absent_claim: true
+    grading: human_or_heuristic
+
+  # --- Security / adversarial (API validation; may not enqueue an agent) ---
+  - id: S3
+    category: adversarial_api
+    mode: create_only
+    repository_url: "https://127.0.0.1/secret"
+    instruction: >
+      This instruction should never run; the URL must be rejected at validation.
+    expect_http_status: 400
+    grading: deterministic
+
+  - id: S3b
+    category: adversarial_api
+    mode: create_only
+    repository_url: "https://169.254.169.254/latest/meta-data/"
+    instruction: >
+      This instruction should never run; the metadata URL must be rejected.
+    expect_http_status: 400
+    grading: deterministic

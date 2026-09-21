@@ -4,7 +4,7 @@
 
 Fifteen phases, executed in order. Each phase produces working software, has its own tests, and ends in a single commit. A phase introduces only the components it needs; nothing is stubbed in advance because it appears in the target architecture.
 
-This document is the index. When a phase becomes the active one, it gets a detailed specification in `docs/phases/phase-NN.md`. Specifications exist for [Phase 1](phases/phase-01.md) through [Phase 9](phases/phase-09.md). Phases 1–9 are complete; **deploy track 14a is complete** ([deploy-track.md](deploy-track.md), [infrastructure/aws/README.md](../infrastructure/aws/README.md)). Next: Phase 10 (sandbox) and/or Phase 14b.
+This document is the index. Detailed specs live in local `docs/phases/phase-NN.md` files (**gitignored** — not published with the repo). Phases 1–9 are complete; **deploy track 14a is complete** ([deploy-track.md](deploy-track.md), [infrastructure/aws/README.md](../infrastructure/aws/README.md)). Next: Phase 10 (sandbox) and/or Phase 14b.
 
 Rules that apply to every phase:
 
@@ -70,7 +70,7 @@ Phase 10 is security-critical for code execution but is **not required** for the
 
 **Commit.** `feat: initialize FastAPI backend foundation`
 
-Full specification: [phase-01.md](phases/phase-01.md).
+Local spec (gitignored): `docs/phases/phase-01.md`.
 
 ## Phase 2 — Task API
 
@@ -96,7 +96,7 @@ Statuses are `pending`, `running`, `completed`, `failed`.
 
 **Commit.** `feat: add task API with request validation and status model`
 
-Full specification: [phase-02.md](phases/phase-02.md).
+Local spec (gitignored): `docs/phases/phase-02.md`.
 
 ## Phase 3 — PostgreSQL via Supabase
 
@@ -116,7 +116,7 @@ Full specification: [phase-02.md](phases/phase-02.md).
 
 **Commit.** `feat: add PostgreSQL persistence with SQLAlchemy and Alembic`
 
-Full specification: [phase-03.md](phases/phase-03.md).
+Local spec (gitignored): `docs/phases/phase-03.md`.
 
 ## Phase 4 — Repository management
 
@@ -132,7 +132,7 @@ Full specification: [phase-03.md](phases/phase-03.md).
 
 **Commit.** `feat: add repository service with validated cloning and workspace isolation`
 
-Full specification: [phase-04.md](phases/phase-04.md).
+Local spec (gitignored): `docs/phases/phase-04.md`.
 
 ## Phase 5 — Repository context tools
 
@@ -150,7 +150,7 @@ Full specification: [phase-04.md](phases/phase-04.md).
 
 **Commit.** `feat: add repository context tools with path confinement and ripgrep search`
 
-Full specification: [phase-05.md](phases/phase-05.md).
+Local spec (gitignored): `docs/phases/phase-05.md`.
 
 ## Phase 6 — OpenAI agent loop
 
@@ -176,7 +176,7 @@ GET  /tasks/{task_id}       → includes result/error after a run
 
 **Commit.** `feat: implement agent loop on the OpenAI Responses API`
 
-Full specification: [phase-06.md](phases/phase-06.md).
+Local spec (gitignored): `docs/phases/phase-06.md`.
 
 ## Phase 7 — Agent runs
 
@@ -192,7 +192,7 @@ Full specification: [phase-06.md](phases/phase-06.md).
 
 **Commit.** `feat: persist agent runs and tool calls`
 
-Full specification: [phase-07.md](phases/phase-07.md).
+Local spec (gitignored): `docs/phases/phase-07.md`.
 
 ## Phase 8 — Semantic retrieval
 
@@ -210,7 +210,7 @@ Full specification: [phase-07.md](phases/phase-07.md).
 
 **Commit.** `feat: add semantic retrieval with OpenAI embeddings and Pinecone`
 
-Full specification: [phase-08.md](phases/phase-08.md).
+Local spec (gitignored): `docs/phases/phase-08.md`.
 
 ## Phase 9 — Background execution
 
@@ -224,11 +224,11 @@ Full specification: [phase-08.md](phases/phase-08.md).
 
 **Definition of done.** `POST /tasks` persists the task, enqueues a job, and returns 202 with a task identifier without waiting for the agent; a worker process executes runs and updates status through `pending`, `running`, and a terminal state; `GET /tasks/{task_id}` reflects live status and returns the result when complete; a worker crash leaves the task in a recoverable state rather than stuck in `running` forever; the worker shuts down gracefully without abandoning an in-flight run silently.
 
-**Notes.** Progress channel is **short poll**. **SSE** and **concurrent `process` hardening** remain deferred — see deferred table and [phase-09.md](phases/phase-09.md). Status: **complete**.
+**Notes.** Progress channel is **short poll**. **SSE** and **concurrent `process` hardening** remain deferred — see deferred table and `docs/phases/phase-09.md` (local). Status: **complete**.
 
 **Commit.** `feat: add background agent execution with Redis and ARQ`
 
-Full specification: [phase-09.md](phases/phase-09.md).
+Local spec (gitignored): `docs/phases/phase-09.md`.
 
 ## Phase 10 — Docker sandbox
 
@@ -347,8 +347,8 @@ Phase 14 is **not complete** until both 14a and 14b are done.
 | Frontend application | Out of scope as a product. Static demo + Swagger; Vercel used for domain/DNS only (D10/D28). |
 | LangChain or LangGraph | Deferred. Trigger condition recorded in [decisions.md](decisions.md). |
 | tree-sitter AST analysis | Deferred. Revisit if chunking or symbol resolution proves insufficient after Phase 8. |
-| Task status SSE | Deferred until after Phase 9 short poll is stable (post–deploy track or Phase 15 polish). Optional `GET /tasks/{task_id}/events`; plain GET remains source of truth. Long poll rejected. See [phase-09.md](phases/phase-09.md). |
-| Concurrent task `process` hardening | Deferred. v1 uses job-id dedupe + skip-if-not-pending. Later: atomic status claim, advisory lock, and/or `delete_namespace` before upsert to prevent double-index / mixed SHA in `task-{task_id}`. See [phase-09.md](phases/phase-09.md). |
+| Task status SSE | Deferred until after Phase 9 short poll is stable (post–deploy track or Phase 15 polish). Optional `GET /tasks/{task_id}/events`; plain GET remains source of truth. Long poll rejected. See `docs/phases/phase-09.md` (local). |
+| Concurrent task `process` hardening | Deferred. v1 uses job-id dedupe + skip-if-not-pending. Later: atomic status claim, advisory lock, and/or `delete_namespace` before upsert to prevent double-index / mixed SHA in `task-{task_id}`. See `docs/phases/phase-09.md` (local). |
 | GitHub App integration, branch and PR creation | Deferred until after Phase 12, since it requires repository credentials and authorization. |
 | Multi-agent orchestration | Out of scope until the single-agent loop is measurably insufficient. |
 | `ruff` and `mypy` | Deferred to the Phase 14 CI pipeline unless requested earlier. |

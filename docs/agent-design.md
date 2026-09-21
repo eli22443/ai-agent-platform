@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines how the agent works: the tool-calling loop, the tool contract, the catalog of tools and when each arrives, and the safeguards that keep a run bounded. The tools landed in Phase 5. The agent loop landed in Phase 6 ([phases/phase-06.md](phases/phase-06.md)). From Phase 9, runs start via the ARQ worker after `POST /tasks` (D22 updated); clients poll `GET /tasks/{task_id}` rather than calling `/run`. Live-run hardening and model notes: [agent-optimization.md](agent-optimization.md).
+This document defines how the agent works: the tool-calling loop, the tool contract, the catalog of tools and when each arrives, and the safeguards that keep a run bounded. The tools landed in Phase 5. The agent loop landed in Phase 6 (local `docs/phases/phase-06.md`). From Phase 9, runs start via the ARQ worker after `POST /tasks` (D22 updated); clients poll `GET /tasks/{task_id}` rather than calling `/run`. Live-run hardening and model notes: [agent-optimization.md](agent-optimization.md).
 
 ## Design stance
 

@@ -190,7 +190,7 @@ Rationale (at the time): keep clone failures distinct from agent failures; make 
 
 Idempotency: ARQ stable job id `process_task:{task_id}` plus `process` no-op when status is not `pending`. Re-run semantics wait for a later phase if needed.
 
-Phase 6 implementation details remain in [phases/phase-06.md](phases/phase-06.md); async orchestration is in [phases/phase-09.md](phases/phase-09.md).
+Phase 6 / 9 implementation details remain in local `docs/phases/` specs (gitignored).
 
 ### D23 — Deploy track after Phase 9 (before Phase 10)
 
@@ -317,7 +317,7 @@ Vectors are namespaced per task workspace (`task-{task_id}`), not per repository
 | Synchronous clone on `POST /tasks` | Phase 4 | HTTP request stays open for `git clone`; timeouts feel like API failures | Phase 9 (implementation landed) |
 | Synchronous agent execution on `POST /tasks/{id}/run` | Phase 6 | Long-held HTTP connections; pairs with sync clone debt. Early commit of `running` helps DB visibility mid-run but does not free the HTTP request | Phase 9 (implementation landed) |
 | Sync indexing before agent on worker | Phase 8 | Slow first run per task when index is cold | Background indexer (post-Phase 9 optimization) |
-| Concurrent workers racing the same pending task | Phase 9 | Two processes may both see `pending`, double-clone/index into `task-{task_id}`; retry can mix SHAs | Atomic status claim, advisory lock, and/or `delete_namespace` before upsert (deferred; see [phases/phase-09.md](phases/phase-09.md)) |
+| Concurrent workers racing the same pending task | Phase 9 | Two processes may both see `pending`, double-clone/index into `task-{task_id}`; retry can mix SHAs | Atomic status claim, advisory lock, and/or `delete_namespace` before upsert (deferred; see local phase-09 spec) |
 | Ephemeral workspaces on Fargate | Deploy track (D23) | Clones lost on ECS task restart | EFS or worker volume (Phase 14b/15) |
 | Public-subnet ECS (no NAT) for demo egress | Deploy track (D27) | Tasks have public IPs; larger attack surface than private+NAT | Private ECS + NAT/VPC endpoints if production hardening requires it (14b) |
 | No authentication on public HTTPS demo | Phase 1 / D28 | Anyone who can reach `api.airepoagent.app` can invoke the API | Phase 12, interim ALB IP allow-list, or other access control |

@@ -1,6 +1,6 @@
 # Agent Optimization Notes (Phase 6)
 
-Lessons from live agent testing against real repos (`psf/requests`, `encode/httpx`) while hardening the Phase 6 agent loop (originally via `POST /tasks/{task_id}/run`; Phase 9 runs the same loop in the worker). Companion to [agent-design.md](agent-design.md) and [phases/phase-06.md](phases/phase-06.md).
+Lessons from live agent testing against real repos (`psf/requests`, `encode/httpx`) while hardening the Phase 6 agent loop (originally via `POST /tasks/{task_id}/run`; Phase 9 runs the same loop in the worker). Companion to [agent-design.md](agent-design.md) (local phase-06 spec).
 
 ## Goals
 

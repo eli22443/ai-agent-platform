@@ -248,6 +248,7 @@ Public subnets were removed from the Redis subnet group. Redis stays a private V
 
 Frequent `/health` lines are expected (ALB target-group checks).
 
+**What success looks like:** after a `POST /tasks`, the API log shows the accepted request (and enqueue). Within seconds the worker log shows the job starting, a clone completing, optional indexing, agent iterations / tool calls, then a completed (or failed) outcome. A stuck task with only API logs and no worker activity usually means Redis connectivity or the worker service is unhealthy.
 ### ECS
 
 | Item | Value |
@@ -290,11 +291,49 @@ ALB ENI Elastic IPs (do **not** release while the ALB uses them):
 Preferred public base URL: **`https://api.airepoagent.app`**
 
 ```bash
-curl https://api.airepoagent.app/health
+curl -s https://api.airepoagent.app/health
+```
+
+```json
+{"status": "ok"}
+```
+
+```bash
 curl -s -X POST https://api.airepoagent.app/tasks \
   -H 'Content-Type: application/json' \
   -d '{"repository_url":"https://github.com/microsoft/python-sample-vscode-fastapi-tutorial","instruction":"Inspect this repository and identify the main application entry point, the API routes, and how the application is started. Do not modify any files. Summarize your findings with file paths."}'
-curl -s https://api.airepoagent.app/tasks/<task_id>
+```
+
+```json
+{
+  "task_id": "feccdcfc-6635-449d-921b-247f3c0b3d12",
+  "status": "pending",
+  "repository_url": "https://github.com/microsoft/python-sample-vscode-fastapi-tutorial",
+  "instruction": "Inspect this repository and identify the main application entry point...",
+  "created_at": "2026-09-05T18:00:00.000000Z",
+  "result": null,
+  "error": null
+}
+```
+
+HTTP status for create: **202 Accepted**. Then poll:
+
+```bash
+curl -s https://api.airepoagent.app/tasks/feccdcfc-6635-449d-921b-247f3c0b3d12
+```
+
+When finished, `status` is `completed` (or `failed`) and `result` holds the agent answer (truncated example):
+
+```json
+{
+  "task_id": "feccdcfc-6635-449d-921b-247f3c0b3d12",
+  "status": "completed",
+  "repository_url": "https://github.com/microsoft/python-sample-vscode-fastapi-tutorial",
+  "instruction": "Inspect this repository and identify the main application entry point...",
+  "created_at": "2026-09-05T18:00:00.000000Z",
+  "result": "Entry point: `app/main.py` creates the FastAPI app. Routes are defined with `@app.get(...)`. Start with `uvicorn app.main:app`.",
+  "error": null
+}
 ```
 
 Swagger / demo UI: `https://api.airepoagent.app/docs` and `https://api.airepoagent.app/`

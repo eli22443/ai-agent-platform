@@ -1,204 +1,128 @@
 # AI Agent Platform
 
-A backend-first AI software engineering assistant. Give it a Git repository URL and a natural-language engineering instruction; it clones the repository into an isolated workspace, investigates the code through a controlled set of tools, and returns an engineering answer.
+A deployed AI agent that asynchronously analyzes public Git repositories with LLM tool calling, semantic retrieval, background workers, persistent task state, and AWS infrastructure.
+
+**Live demo:** [https://api.airepoagent.app](https://api.airepoagent.app) · [Swagger](https://api.airepoagent.app/docs) · [Health](https://api.airepoagent.app/health)
+
+![Demo UI](docs/assets/demo-ui.png)
 
 ```text
 Repository:  https://github.com/example/project
 Instruction: Find why the authentication tests are failing and explain how to fix them.
 ```
 
-## Status
+**Status:** Phases 1–9 + deploy track 14a (ECS, ALB HTTPS). Working **demo**, not multi-tenant production — no app auth, no code-execution sandbox yet. Runbook: [infrastructure/aws/README.md](infrastructure/aws/README.md).
 
-Phases 1–9 are complete. **Deploy track 14a is live on AWS** (`eu-north-1`): public HTTPS at [`https://api.airepoagent.app`](https://api.airepoagent.app), ECS API + worker (public subnets, no NAT), ALB, ElastiCache, Secrets Manager. Runbook: [infrastructure/aws/README.md](infrastructure/aws/README.md). Guide: [docs/deploy-track.md](docs/deploy-track.md).
-
-Next: Phase 10 (Docker sandbox, needs O1) and/or Phase 14b (OIDC CI, auth/access control for the public API, hardening). Spec: [docs/phases/phase-09.md](docs/phases/phase-09.md). Live-run notes: [docs/agent-optimization.md](docs/agent-optimization.md).
-
-## What it does
+## How it works
 
 ```mermaid
 flowchart LR
-    Post["POST /tasks 202"] --> Enqueue["Enqueue ARQ job"]
-    Enqueue --> Worker["Worker: clone + index + agent"]
+    Post["POST /tasks 202"] --> Enqueue["ARQ job"]
+    Enqueue --> Worker["clone + index + agent"]
     Worker --> Loop["Agent loop"]
     Loop --> Tools["list_files / search_code / read_file / semantic_search"]
     Tools --> Loop
-    Loop --> Answer["Engineering answer"]
-    Poll["GET /tasks/id"] --> Status["status + result"]
+    Loop --> Answer["result"]
+    Poll["GET /tasks/id"] --> Answer
 ```
 
-The agent investigates rather than guesses: it lists directories, searches the code, reads the files that matter, and grounds its answer in what it actually found. Later phases add sandboxed test execution and the ability to modify code and return a reviewable diff.
+1. `POST /tasks` → **202** + `task_id` (`pending`)
+2. Worker clones, indexes (Pinecone), runs the agent
+3. Agent uses repo tools until it answers or hits limits
+4. Poll `GET /tasks/{id}` → `completed` / `failed`; runs at `GET /tasks/{id}/runs`
 
-## Documentation
-
-| Document | Contents |
-| --- | --- |
-| [docs/architecture.md](docs/architecture.md) | Target architecture, layer separation, data model, technology constraints |
-| [docs/agent-design.md](docs/agent-design.md) | The tool-calling loop, tool contract, tool catalog, safeguards |
-| [docs/security.md](docs/security.md) | Threat model and controls; repository code is untrusted input |
-| [docs/evaluation.md](docs/evaluation.md) | Metrics, benchmark task set, grading approach |
-| [docs/decisions.md](docs/decisions.md) | Settled decisions, open items, accepted technical debt |
-| [docs/roadmap.md](docs/roadmap.md) | All 15 phases with definitions of done |
-| [docs/phases/phase-08.md](docs/phases/phase-08.md) | Phase 8 specification (semantic retrieval — implemented) |
-| [docs/phases/phase-09.md](docs/phases/phase-09.md) | Phase 9 specification (background execution — implemented) |
-| [docs/deploy-track.md](docs/deploy-track.md) | AWS deploy after Phase 9 (Supabase, ECS, checklist) |
-| [docs/agent-optimization.md](docs/agent-optimization.md) | Live-run lessons: prompts, models, dispatch cache, reasoning replay |
-
-Start with [docs/deploy-track.md](docs/deploy-track.md) for the next implementation step.
-
-## Client flow (async)
-
-1. `POST /tasks` with `repository_url` and `instruction` → **202 Accepted** with `task_id` and `status: pending`.
-2. Poll `GET /tasks/{task_id}` until `status` is `completed` or `failed`.
-3. Read `result` or `error` from the task body.
-
-A lightweight demo UI at `/` (static HTML/JS under `backend/static/`) wraps this flow in the browser. Swagger UI at `/docs` remains the interactive API explorer. `POST /tasks/{task_id}/run` returns **410 Gone**. Clone, indexing, and the agent run execute in an ARQ worker. See [docs/phases/phase-09.md](docs/phases/phase-09.md) and [docs/deploy-track.md](docs/deploy-track.md) for cloud deployment.
-
-## Technology
-
-| Area | Choice | From phase |
-| --- | --- | --- |
-| Language | Python 3.12+ | 1 |
-| Dependencies | `uv`, `pyproject.toml`, `uv.lock` | 1 |
-| API | FastAPI, Pydantic v2, Uvicorn | 1 |
-| Database | PostgreSQL (local apt for dev; Supabase for prod), SQLAlchemy 2.x, Alembic | 3 |
-| Repository access | Git CLI | 4 |
-| Code search | ripgrep | 5 |
-| LLM | OpenAI Responses API, official SDK | 6 |
-| Embeddings and vectors | OpenAI `text-embedding-3-small`, Pinecone | 8 |
-| Background jobs | Redis, ARQ | 9 |
-| Sandbox | Docker | 10 |
-| Auth, optional | Supabase Auth, JWT | 12 |
-| Observability | Langfuse, OpenTelemetry | 13 |
-| Deployment | AWS ECS/Fargate, ECR, CloudWatch, GitHub Actions | 14 |
-
-No frontend framework. A co-located static demo UI is served at `/`; Swagger UI at `/docs` is the API documentation surface. No LangChain or LangGraph in the initial implementation. See [docs/decisions.md](docs/decisions.md) for the reasoning and the rejected alternatives.
-
-## Roadmap at a glance
-
-| Phase | Name | | Phase | Name |
-| --- | --- | --- | --- | --- |
-| 1 | FastAPI foundation | | 9 | Background execution |
-| 2 | Task API | | 10 | Docker sandbox |
-| 3 | PostgreSQL via Supabase | | 11 | Code modification |
-| 4 | Repository management | | 12 | Authentication, optional |
-| 5 | Repository context tools | | 13 | Observability |
-| 6 | OpenAI agent loop | | 14 | AWS deployment |
-| 7 | Agent runs | | 15 | Production hardening |
-| 8 | Semantic retrieval | | | |
-
-**The MVP (Phase 6) is complete.** It needs no Redis, Docker, Pinecone, authentication, or agent framework. Default model: `gpt-5.4-mini` (override with `OPENAI_MODEL`).
-
-## Prerequisites
-
-| Requirement | Needed from | Notes |
-| --- | --- | --- |
-| Python 3.12+ | Phase 1 | |
-| [`uv`](https://docs.astral.sh/uv/) | Phase 1 | Dependency and environment management |
-| `git` | Phase 1 | Also the repository cloning mechanism from Phase 4 |
-| `ripgrep` | Phase 5 | `sudo apt install ripgrep`; an editor-bundled `rg` is not sufficient |
-| PostgreSQL connection | Phase 3 | Local apt Postgres for development (D19); [Supabase](https://supabase.com) for cloud `DATABASE_URL` on deploy track (D24) |
-| OpenAI API key | Phase 6 | |
-| Pinecone account | Phase 8 | |
-| Redis | Phase 9 | Local `redis-server` or compose; ElastiCache on AWS deploy track |
-| Supabase project | Deploy track | Cloud database only; not required for local apt Postgres dev |
-| Docker | Phase 10 | Currently unreachable from this WSL distribution; see [docs/decisions.md](docs/decisions.md). O1 workaround for **app** images: CI build → ECR per [docs/deploy-track.md](docs/deploy-track.md) |
-
-## Local setup
-
-Available:
+## API examples
 
 ```bash
-cd backend
-uv sync                 # install dependencies from uv.lock
-cp .env.example .env     # then edit as needed
+curl -s -X POST https://api.airepoagent.app/tasks \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "repository_url": "https://github.com/microsoft/python-sample-vscode-fastapi-tutorial",
+    "instruction": "Identify the main entry point and API routes. Cite file paths. Do not modify files."
+  }'
 ```
 
-## Development commands
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "pending",
+  "repository_url": "https://github.com/microsoft/python-sample-vscode-fastapi-tutorial",
+  "instruction": "Identify the main entry point...",
+  "created_at": "2026-09-20T12:00:00.000000Z",
+  "result": null,
+  "error": null
+}
+```
 
 ```bash
-cd backend
-
-uv run uvicorn app.main:app --reload    # API + demo UI at http://127.0.0.1:8000/
-uv run pytest                            # run the test suite
-uv run pytest -v                         # verbose
-uv add <package>                         # add a dependency
-uv add --dev <package>                   # add a development dependency
+curl -s https://api.airepoagent.app/tasks/<task_id>
+# → status: running | completed | failed; result when done
+curl -s https://api.airepoagent.app/tasks/<task_id>/runs
 ```
 
-Never create a `requirements.txt`. Dependencies are managed exclusively through `uv`, and `uv.lock` is committed.
+`POST /tasks/{id}/run` → **410 Gone**. OpenAPI: `/docs`.
 
-## Environment variables
+## AWS
 
-Set through the environment or a `.env` file in `backend/`. `.env` is git-ignored; `.env.example` carries names only, never values.
-
-| Variable | From phase | Purpose |
-| --- | --- | --- |
-| `APP_ENV` | 1 | `local`, `test`, or `production` |
-| `LOG_LEVEL` | 1 | Logging verbosity, default `INFO` |
-| `DEBUG` | 1 | Debug behavior toggle, default `false` |
-| `DATABASE_URL` | 3 | PostgreSQL connection string; local apt Postgres in dev (D19); Supabase direct URL in cloud (D24, [deploy-track.md](docs/deploy-track.md)) |
-| `WORKSPACES_ROOT` | 4 | Directory holding cloned repository workspaces |
-| `GIT_CLONE_TIMEOUT_SECONDS` | 4 | Clone timeout |
-| `MAX_REPO_SIZE_MB` | 4 | Clone size cap |
-| `GIT_ALLOWED_HOSTS` | 4 | Comma-separated clone host allow-list |
-| `RIPGREP_PATH` | 5 | System `rg` binary name or path (not Cursor's bundled rg) |
-| `TOOL_READ_MAX_BYTES` | 5 | Max bytes returned by `read_file` |
-| `TOOL_READ_MAX_LINES` | 5 | Max lines returned by `read_file` |
-| `TOOL_SEARCH_MAX_RESULTS` | 5 | Max matches returned by `search_code` |
-| `TOOL_SEARCH_TIMEOUT_SECONDS` | 5 | ripgrep timeout |
-| `TOOL_GIT_TIMEOUT_SECONDS` | 5 | Git tool timeout |
-| `OPENAI_API_KEY` | 6 | OpenAI credential |
-| `OPENAI_MODEL` | 6 | Model used by the agent loop |
-| `AGENT_MAX_ITERATIONS` | 6 | Hard cap on agent loop turns |
-| `AGENT_TIMEOUT_SECONDS` | 6 | Wall-clock limit per run |
-| `AGENT_MAX_OUTPUT_TOKENS` | 6 | Optional per-response output cap |
-| `AGENT_TOKEN_BUDGET` | 6 | Optional cumulative token halt (`0` = disabled) |
-| `OPENAI_EMBEDDING_MODEL` | 8 | Embedding model, default `text-embedding-3-small` |
-| `PINECONE_API_KEY` | 8 | Pinecone credential |
-| `PINECONE_INDEX` | 8 | Pinecone index name |
-| `REDIS_URL` | 9 | ARQ queue connection, e.g. `redis://127.0.0.1:6379/0` |
-| `SUPABASE_URL` | 12 | Auth issuer |
-| `SUPABASE_JWT_SECRET` | 12 | Token verification |
-| `LANGFUSE_PUBLIC_KEY` | 13 | Tracing |
-| `LANGFUSE_SECRET_KEY` | 13 | Tracing |
-| `LANGFUSE_HOST` | 13 | Tracing endpoint |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | 13 | OpenTelemetry collector |
-
-No secret is ever committed, logged, stored in a database row, or passed into the sandbox. See [docs/security.md](docs/security.md).
-
-## Testing
-
-```bash
-cd backend
-uv run pytest
+```mermaid
+flowchart TB
+    Client --> ALB["ALB HTTPS"]
+    ALB --> API["ECS API"]
+    API --> Redis["ElastiCache"]
+    Redis --> Worker["ECS worker"]
+    API --> DB["Supabase PG"]
+    Worker --> DB
+    Worker --> Ext["OpenAI / Pinecone / GitHub"]
+    API --> Secrets["Secrets Manager"]
+    Worker --> Secrets
 ```
 
-Three levels, described in [docs/evaluation.md](docs/evaluation.md): unit tests for deterministic logic, integration tests for components in combination, and agent evaluations that run the full loop against a real model. Only the first two belong in CI; agent evaluations cost money and are run deliberately. No unit or integration test makes a paid API call.
+ECS API + worker, ALB/ACM, Redis (ARQ), Supabase, Pinecone, Secrets Manager, CloudWatch. Details: [infrastructure/aws/README.md](infrastructure/aws/README.md), [docs/deploy-track.md](docs/deploy-track.md).
 
-## Project structure
-
-```text
-ai-agent-platform/
-├── docs/                  Architecture, design, security, evaluation, roadmap, deploy-track
-├── backend/               FastAPI application, tests, Dockerfile (deploy track)
-│   ├── app/               Application package
-│   └── static/            Demo UI (HTML/CSS/JS served at /)
-├── docker-compose.yml     Local api + worker + redis (deploy track step C)
-├── infrastructure/        Docker sandbox (Phase 10) and AWS runbook (deploy track)
-└── .github/workflows/     CI and deployment (Phase 14b; 14a may add ECR build only)
-```
-
-Directories appear in the phase that needs them. Placeholder modules are not created in advance.
-
-## Development principles
-
-1. Implement one phase at a time; every phase produces working software.
-2. Do not create fake implementations of future components.
-3. Repository code and content are untrusted input, both as code to execute and as text entering the model's context.
-4. The LLM never executes arbitrary code directly; it requests tools, and the platform decides whether to honor them.
-5. Every infrastructure component must have a concrete, current purpose.
-6. Do not silently change a technology decision. Raise the conflict, then record the change in [docs/decisions.md](docs/decisions.md).
+**Demo tradeoffs:** public ECS subnets (no NAT); **no authentication**.
 
 ## Security
 
-This platform executes AI-selected actions against software repositories, and from Phase 10 it executes untrusted code. Read [docs/security.md](docs/security.md) before working on the tool, sandbox, or repository layers.
+Repo content is untrusted (code + text). In place: URL/SSRF allow-list, path/symlink confinement, clone size/timeout, tool + agent limits, audit rows (`agent_runs` / `tool_calls`), secrets only from env/Secrets Manager. Details: [docs/security.md](docs/security.md).
+
+## Limitations
+
+- No auth / multi-tenant isolation
+- No Docker sandbox (read-only analysis only)
+- Eval harness exists ([`evals/`](evals/)); report template: [docs/evaluation-report.md](docs/evaluation-report.md) — results not committed yet
+- Public demo can incur LLM/vector cost; no Langfuse/OTel yet
+
+## Docs
+
+| Doc | |
+| --- | --- |
+| [architecture.md](docs/architecture.md) | As-built system |
+| [security.md](docs/security.md) | Threat model |
+| [agent-design.md](docs/agent-design.md) | Tool loop |
+| [evaluation.md](docs/evaluation.md) / [evals/](evals/) | Eval design + harness |
+| [roadmap.md](docs/roadmap.md) / [decisions.md](docs/decisions.md) | Phases / ADRs |
+| [deploy-track.md](docs/deploy-track.md) / [aws README](infrastructure/aws/README.md) | Deploy |
+
+## Stack
+
+Python 3.12 · FastAPI · Postgres/Supabase · Redis/ARQ · Git + ripgrep · OpenAI · Pinecone · ECS/ALB. Static demo at `/`; no LangChain.
+
+## Local
+
+```bash
+cd backend
+uv sync && cp .env.example .env
+uv run uvicorn app.main:app --reload          # http://127.0.0.1:8000/
+uv run arq app.workers.main.WorkerSettings    # worker
+uv run pytest
+```
+
+Needs: Postgres, Redis, `git`, `rg`. Optional: OpenAI, Pinecone. Compose: [docker-compose.yml](docker-compose.yml). Env names: [`.env.example`](backend/.env.example). Never commit secrets.
+
+**CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — pytest + Docker build.
+
+**Eval (paid, deliberate):**
+
+```bash
+cd backend && uv run --with pyyaml python ../evals/run_eval.py --api-base http://127.0.0.1:8000 --all
+```

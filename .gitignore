@@ -48,4 +48,9 @@ logs/
 # Reference material: large binary PDFs and archives, not part of the codebase
 .context/
 
+# Phase implementation specs (local working docs; not published)
 docs/phases/
+
+# Evaluation run outputs (committed template lives in docs/; results are local)
+evals/results/*
+!evals/results/.gitkeep

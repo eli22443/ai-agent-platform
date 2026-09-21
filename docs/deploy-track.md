@@ -106,8 +106,23 @@ Console-first deploy in `eu-north-1`. Record: [infrastructure/aws/README.md](../
 
 ### E — E2E verification — **done**
 
-Checklist below passed (example `task_id` `feccdcfc-6635-449d-921b-247f3c0b3d12` against the Microsoft FastAPI sample repo). See AWS README for curl examples.
+Checklist below passed (example `task_id` `feccdcfc-6635-449d-921b-247f3c0b3d12` against the Microsoft FastAPI sample repo). Curl commands and sample JSON request/response bodies: [infrastructure/aws/README.md](../infrastructure/aws/README.md#alb--target-group).
 
+Example create response shape:
+
+```json
+{
+  "task_id": "feccdcfc-6635-449d-921b-247f3c0b3d12",
+  "status": "pending",
+  "repository_url": "https://github.com/microsoft/python-sample-vscode-fastapi-tutorial",
+  "instruction": "Inspect this repository...",
+  "created_at": "2026-09-05T18:00:00.000000Z",
+  "result": null,
+  "error": null
+}
+```
+
+HTTP status: **202 Accepted**. Poll `GET /tasks/{task_id}` until `completed` / `failed`.
 ### F — Phase 14 hardening (14b) — **not started**
 
 - GitHub Actions + OIDC deploy to ECR/ECS
@@ -179,4 +194,4 @@ Phases 8 → 9 → Deploy track 14a (done) → Phase 10 → 11 → … → Phase
 | [roadmap.md](roadmap.md) | Phase index; 14a/14b split |
 | [architecture.md](architecture.md) | Cloud topology |
 | [decisions.md](decisions.md) | D23–D28 |
-| [phases/phase-09.md](phases/phase-09.md) | Worker / queue spec |
+| [roadmap.md](roadmap.md) | Phase index (detailed `docs/phases/` specs are local / gitignored) |

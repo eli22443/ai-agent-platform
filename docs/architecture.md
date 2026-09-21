@@ -1,157 +1,82 @@
 # Architecture
 
-## Purpose
+As-built overview (Phases 1–9 + deploy track 14a). Roadmap: [roadmap.md](roadmap.md). Decisions: [decisions.md](decisions.md).
 
-The AI Agent Platform is a backend-first AI software engineering assistant. A user supplies a Git repository URL and a natural-language engineering instruction. The platform clones the repository into an isolated workspace, lets an LLM investigate it through a controlled set of tools, and returns an engineering result.
+**Status:** Implemented in `backend/`; live on AWS (`eu-north-1`). Next: Phase 10 sandbox and/or 14b. Index: [roadmap.md](roadmap.md).
 
-Example instruction:
-
-```text
-Repository:  https://github.com/example/project
-Instruction: Find why the authentication tests are failing and explain how to fix them.
-```
-
-This document describes the target architecture. Every component is annotated with the phase that introduces it. Components marked with a future phase do not exist in the codebase yet, and no placeholder modules are created for them. See [roadmap.md](roadmap.md) for the phase sequence and [decisions.md](decisions.md) for the rationale behind each technology choice.
-
-## Status
-
-Phases 1–9 are implemented in `backend/`. **Deploy track 14a is complete** on AWS (`eu-north-1`); see [deploy-track.md](deploy-track.md) and [infrastructure/aws/README.md](../infrastructure/aws/README.md). Next: Phase 10 (sandbox) and/or Phase 14b. Background execution: [phases/phase-09.md](phases/phase-09.md).
-
-
-## Target architecture
+## Diagram
 
 ```mermaid
 flowchart TD
-    Client["API Client / Swagger UI"] -->|REST| API["FastAPI API (Phase 1-2)"]
-    API --> DB[("PostgreSQL via Supabase (Phase 3)")]
-    API --> Queue["Redis + ARQ (Phase 9)"]
-    Queue --> Worker["Agent Worker (Phase 9)"]
-    API --> Agent["Agent Loop (Phase 6)"]
-    Worker --> Agent
-    Agent --> OpenAI["OpenAI Responses API (Phase 6)"]
-    Agent --> Tools["Tool Layer (Phase 5)"]
-    Tools --> RepoSvc["Repository Service, Git CLI (Phase 4)"]
-    Tools --> Lexical["Lexical Search, ripgrep (Phase 5)"]
-    Tools --> Semantic["Semantic Retrieval (Phase 8)"]
-    Tools --> Sandbox["Docker Sandbox (Phase 10)"]
-    Semantic --> Pinecone[("Pinecone (Phase 8)")]
-    Sandbox --> Exec["Tests and Commands (Phase 10-11)"]
-    Agent --> Runs["Agent Runs and Tool Calls (Phase 7)"]
+    Client["Demo UI / Swagger / curl"] -->|REST| API["FastAPI"]
+    API --> DB[("PostgreSQL")]
+    API --> Queue["Redis + ARQ"]
+    Queue --> Worker["Worker"]
+    Worker --> Agent["Agent loop"]
+    Agent --> OpenAI["OpenAI"]
+    Agent --> Tools["Tools"]
+    Tools --> RepoSvc["Git / workspace"]
+    Tools --> Lexical["ripgrep"]
+    Tools --> Semantic["embeddings"]
+    Semantic --> Pinecone[("Pinecone")]
+    Agent --> Runs["agent_runs / tool_calls"]
     Runs --> DB
-    Agent -.-> Obs["Langfuse + OpenTelemetry (Phase 13)"]
 ```
 
-## Layer separation
+Not built yet: sandbox (10), code mods (11), auth (12), Langfuse/OTel (13), OIDC deploy (14b).
 
-The system is divided into seven layers. A layer may depend on the layers below it through an explicit interface, and never reaches sideways into a peer's internals. This is the single most important structural rule in the project, because it is what allows the sandbox and persistence layers to be replaced without touching agent logic.
-
-| Layer | Responsibility | Introduced |
-| --- | --- | --- |
-| API | HTTP surface, request validation, response shaping, error mapping | Phase 1-2 |
-| Agent | Reasoning loop, tool selection, run lifecycle | Phase 6 |
-| Tool | Typed, permission-controlled capabilities exposed to the model | Phase 5 |
-| Repository | Cloning, workspace lifecycle, Git inspection | Phase 4 |
-| Retrieval | Lexical and semantic code search | Phase 5 and Phase 8 |
-| Execution / Sandbox | Isolated command and test execution | Phase 10 |
-| Persistence | Application state in PostgreSQL | Phase 3 |
-
-Concrete consequences of the rule:
-
-- API routes never invoke the Git CLI, never construct prompts, and never touch a session directly. They call services.
-- The agent loop never calls `subprocess` and never opens files by path. It calls tools.
-- Tools never call the OpenAI API. They receive validated arguments and return structured results.
-- The retrieval layer does not know that an agent exists. It answers queries.
-
-## Component responsibilities
-
-### FastAPI API (Phase 1-2)
-
-The application layer and the only public entry point. Owns routing, request and response schemas, dependency injection, error mapping, and OpenAPI documentation. Swagger UI at `/docs` is the demonstration surface for this project; there is no separate frontend at any phase.
-
-Endpoints as they accumulate:
+## Security boundaries
 
 ```text
-GET  /health                 Phase 1
-POST /tasks                  Phase 2 persist; Phase 9 → 202 + enqueue (no sync clone)
-GET  /tasks                  Phase 2
-GET  /tasks/{task_id}        Phase 2 (poll status/result after Phase 9)
-POST /tasks/{task_id}/run    Phase 6 (sync agent; historical); Phase 9 → 410 Gone
-GET  /tasks/{task_id}/runs   Phase 7 (run history)
-GET  /tasks/{task_id}/runs/{run_id}  Phase 7 (run detail + tool calls)
+Internet → ALB HTTPS → ECS API → Redis → ECS worker
+                         ↓                  ↓
+                    Supabase PG      OpenAI / Pinecone / GitHub
 ```
 
-Clients short-poll `GET /tasks/{task_id}` for status and results. `POST /tasks` returns **202 Accepted** (see [phases/phase-09.md](phases/phase-09.md)).
+| Boundary | Status | Where |
+| --- | --- | --- |
+| HTTPS | Yes (ALB + ACM) | 14a |
+| App auth | **No** (public demo) | Phase 12 |
+| SSRF / URL allow-list | Yes | `url_validation.py` |
+| Path / symlink confinement | Yes | `tools/paths.py` |
+| Clone size / timeout | Yes | repository service |
+| Tool + agent limits | Yes | tools / `agent/limits.py` |
+| Audit trail | Yes | `agent_runs` / `tool_calls` |
+| Code sandbox | **No** | Phase 10 |
+| Rate limits | **No** | Phase 15 |
 
-### Persistence (Phase 3)
+Full model: [security.md](security.md).
 
-PostgreSQL via SQLAlchemy 2.x and Alembic. Development uses a local apt-installed Postgres (D19). Managed Supabase remains the intended production database (D6); Supabase Auth is optional and deferred to Phase 12. Business logic stays in FastAPI. ORM models live under `app/database/`; the package name `app/repositories/` is reserved for Git/workspace code (Phase 4), not a data-access “repository” pattern.
+## Layers
 
-### Repository service (Phase 4)
+A layer only depends downward through explicit interfaces.
 
-Owns the lifecycle of a cloned repository: URL validation, isolated workspace creation, cloning through the Git CLI, structure inspection, and cleanup. Git invocation is confined to this layer so the rest of the application never shells out to Git directly. Only public repositories are supported until authentication and repository credentials exist.
+| Layer | Role | Phase |
+| --- | --- | --- |
+| API | HTTP, validation, errors | 1–2 |
+| Agent | Loop, tool selection | 6 |
+| Tool | Typed capabilities | 5 |
+| Repository | Clone, workspace | 4 |
+| Retrieval | ripgrep + semantic | 5, 8 |
+| Sandbox | Isolated exec | 10 |
+| Persistence | PostgreSQL | 3 |
 
-### Tool layer (Phase 5)
+Rules: routes → services only; agent → tools only; tools never call OpenAI; retrieval does not know about agents.
 
-Each tool has a name, a description used by the model, a JSON Schema for its input, a typed output, and an explicit error representation. Tools validate their own inputs and confine all filesystem access to the task's workspace root. Read-only tools and mutating tools are separated, so write access introduced in Phase 11 is a deliberate capability grant rather than an accident. See [agent-design.md](agent-design.md) for the full contract and catalog.
+## Components (short)
 
-### Agent loop (Phase 6)
+| Piece | Notes |
+| --- | --- |
+| **API** | FastAPI; static demo at `/`; Swagger at `/docs`. `POST /tasks` → **202**; poll `GET /tasks/{id}`; `/run` → **410**; run history under `/runs`. |
+| **DB** | SQLAlchemy + Alembic; local apt Postgres (dev), Supabase (prod). Models in `app/database/`. |
+| **Repos** | URL validation, clone, workspace. Public repos only. |
+| **Tools** | Validated args; workspace-confined. Catalog: [agent-design.md](agent-design.md). |
+| **Agent** | OpenAI Responses tool calling in the worker (`TaskService.process`). Limits + live notes: [agent-optimization.md](agent-optimization.md). |
+| **Retrieval** | ripgrep (exact) + Pinecone namespace `task-{id}` (semantic). |
+| **Queue** | Redis + ARQ. |
+| **Sandbox / OTel** | Planned (10 / 13). |
 
-Implemented directly against the OpenAI Responses API with native tool calling, deliberately framework-light. Triggered by the ARQ worker via `TaskService.process` after `POST /tasks` enqueues a job (D22 as updated in Phase 9). The loop sends the instruction and tool schemas from `build_read_only_registry()`, detects tool calls, dispatches them (with a per-run dedupe cache), feeds results back, and repeats until the model produces a final answer or a safeguard limit is reached. Reasoning-model responses replay `reasoning` items with function calls. Answers persist on `tasks.result`; full `agent_runs` / `tool_calls` rows are Phase 7. Defaults and live-run notes: [agent-optimization.md](agent-optimization.md).
-
-### Retrieval (Phase 5 and Phase 8)
-
-Two complementary tracks, not competing ones. Lexical search with ripgrep arrives in Phase 5 and remains permanently useful, because exact identifier and string matching is often what a code question actually requires. Semantic search with OpenAI embeddings and Pinecone arrives in Phase 8 for conceptual queries where the user's wording does not match the source text. Vectors live in a Pinecone namespace per task workspace (`task-{task_id}`), not per repository URL, so concurrent tasks cannot clobber each other's index. Vector search is not assumed to be the only or best way to retrieve code.
-
-### Background execution (Phase 9)
-
-Redis with ARQ (implemented). Long-running clone, indexing, and agent work leave the HTTP request: `POST /tasks` returns **202** and enqueues one job; `/run` returns **410 Gone**. Clients **short-poll** `GET /tasks/{task_id}` for status and results. Server-Sent Events for task progress remain deferred (roadmap deferred table).
-
-### Sandbox (Phase 10)
-
-Docker-based isolated execution for `run_command` and `run_tests`. Repository code is untrusted and must never execute on the application host. Requirements include CPU and memory limits, execution timeouts, filesystem isolation, restricted networking, no access to application secrets, no privileged containers, and guaranteed cleanup. See [security.md](security.md).
-
-### Observability (Phase 13)
-
-Langfuse for LLM and agent tracing, OpenTelemetry for application-level traces and metrics. Tracks agent runs, model calls, tool calls, latency, token usage, errors, and estimated cost.
-
-## Request-to-result data flow
-
-### Phase 6 MVP (historical)
-
-Through Phase 8, clone and agent were separate HTTP calls, both synchronous on the request. That debt was repaid in Phase 9.
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant API as FastAPI
-    participant DB as PostgreSQL
-    participant R as Repository Service
-    participant A as Agent Loop
-    participant M as OpenAI Responses API
-
-    User->>API: POST /tasks {repository_url, instruction}
-    API->>R: validate URL, clone workspace
-    API->>DB: insert task (status=pending)
-    API-->>User: 201 {task_id, status=pending}
-    User->>API: POST /tasks/{task_id}/run
-    API->>DB: status=running
-    API->>A: run(instruction, workspace)
-    loop until final answer or limit
-        A->>M: input + tool schemas
-        M-->>A: tool call
-        A->>A: ToolRegistry.execute
-        A->>M: tool result
-    end
-    M-->>A: final answer
-    API->>DB: status=completed, result
-    API-->>User: 200 answer + tool_calls summary
-    User->>API: GET /tasks/{task_id}
-    API-->>User: status and result
-```
-
-### Phase 9 (async, current)
-
-`POST /tasks` enqueues a single job; the worker clones, indexes (Phase 8), and runs the agent; clients poll `GET /tasks/{task_id}`.
+## Current request flow
 
 ```mermaid
 sequenceDiagram
@@ -160,187 +85,65 @@ sequenceDiagram
     participant Q as Redis_ARQ
     participant W as Worker
     participant DB as PostgreSQL
-    participant R as Repository Service
-    participant A as Agent Loop
 
-    User->>API: POST /tasks {repository_url, instruction}
-    API->>DB: insert task (status=pending)
-    API->>Q: enqueue process_task(task_id)
-    API-->>User: 202 {task_id, status=pending}
-    W->>Q: dequeue job
-    W->>DB: status=running
-    W->>R: clone workspace
-    W->>W: ensure_indexed (Phase 8)
-    W->>A: run_agent()
-    loop until final answer or limit
-        A->>A: tools
-    end
-    W->>DB: status=completed, result, agent_runs
-    User->>API: GET /tasks/{task_id}
-    API-->>User: status and result
+    User->>API: POST /tasks
+    API->>DB: insert pending
+    API->>Q: enqueue
+    API-->>User: 202
+    W->>Q: dequeue
+    W->>DB: running
+    W->>W: clone + index + agent
+    W->>DB: completed + runs
+    User->>API: GET /tasks/id
+    API-->>User: status + result
 ```
 
-## Cloud deployment (deploy track / 14a)
-
-**14a is deployed and E2E-verified.** Inventory: [infrastructure/aws/README.md](../infrastructure/aws/README.md). Postgres remains **Supabase** (D24); Pinecone, OpenAI, and GitHub stay external.
+## Cloud (14a)
 
 ```mermaid
 flowchart TD
-    Client["Client"] -->|HTTPS :443| ALB["ALB public subnets"]
-    DNS["api.airepoagent.app Vercel DNS"] --> ALB
-    ALB --> API["ECS Fargate API public"]
-    API -->|enqueue| Redis[("ElastiCache Redis private")]
-    API --> DB[("Supabase PostgreSQL")]
-    Redis --> Worker["ECS Fargate Worker public"]
+    Client -->|HTTPS| ALB
+    ALB --> API["ECS API public"]
+    API --> Redis[("ElastiCache private")]
+    Redis --> Worker["ECS worker public"]
+    API --> DB[("Supabase")]
     Worker --> DB
-    Worker --> WS["Ephemeral workspace disk"]
     Worker --> Ext["OpenAI Pinecone GitHub"]
-    API --> IGW["Internet Gateway"]
-    Worker --> IGW
 ```
 
-- Dedicated VPC + **public** Fargate tasks with public IPs + **IGW** egress; **no NAT** (D27, cost-optimized). Redis stays private.
-- **Public HTTPS** at `https://api.airepoagent.app` (ACM on ALB, Vercel DNS) (D28).
-- **Two ECS services** share one ECR image; API = Uvicorn, worker = ARQ (D25 ≠ sandbox image).
-- **Workspaces** on ephemeral task disk in v1 (accepted debt).
-- **Secrets** from Secrets Manager; worker has no inbound ports; API inbound from ALB SG only.
-- Phase 14: **14a done** (incl. HTTPS hostname); **14b** (OIDC CI, IAM hardening, public-API auth/access control, O7) still open (D26).
-## Data model sketch
+Public Fargate + IGW (no NAT); Redis private; secrets from Secrets Manager; inventory: [infrastructure/aws/README.md](../infrastructure/aws/README.md).
 
-Introduced in Phase 3, extended in Phase 7, and extended again in the optional Phase 12. Column lists are indicative, not final; the authoritative schema is whatever Alembic migrations define.
+## Data model
 
-```mermaid
-erDiagram
-    USERS ||--o{ REPOSITORIES : owns
-    REPOSITORIES ||--o{ TASKS : has
-    TASKS ||--o{ AGENT_RUNS : has
-    AGENT_RUNS ||--o{ TOOL_CALLS : has
+`tasks` → `agent_runs` → `tool_calls`. Optional `users` in Phase 12. Status: `pending` \| `running` \| `completed` \| `failed`. No secrets in tables. Schema = Alembic migrations.
 
-    USERS {
-        uuid id PK
-        text external_id
-        timestamptz created_at
-    }
-    REPOSITORIES {
-        uuid id PK
-        text url
-        text default_branch
-        text last_commit_sha
-        timestamptz created_at
-    }
-    TASKS {
-        uuid id PK
-        uuid repository_id FK
-        text instruction
-        text status
-        text result
-        text error
-        timestamptz created_at
-        timestamptz updated_at
-    }
-    AGENT_RUNS {
-        uuid id PK
-        uuid task_id FK
-        text model
-        text status
-        int iterations
-        int prompt_tokens
-        int completion_tokens
-        timestamptz started_at
-        timestamptz finished_at
-    }
-    TOOL_CALLS {
-        uuid id PK
-        uuid agent_run_id FK
-        text tool_name
-        jsonb arguments
-        text status
-        int duration_ms
-        text error
-        timestamptz created_at
-    }
-```
-
-Notes:
-
-- `users` is created only in Phase 12, when multi-user behavior is actually needed. Until then, repositories and tasks have no owner.
-- `tasks.status` is one of `pending`, `running`, `completed`, `failed`.
-- No secrets, tokens, or credentials are stored in any table. See [security.md](security.md).
-
-## Repository layout
-
-Current layout (Phases 1–6 landed):
+## Layout
 
 ```text
-ai-agent-platform/
-├── .gitignore
-├── README.md
-├── backend/
-│   ├── app/
-│   │   ├── main.py, config.py, logging.py, errors.py, middleware.py
-│   │   ├── api/routes/{health,tasks}.py
-│   │   ├── schemas/, services/
-│   │   ├── database/               # SQLAlchemy + Alembic
-│   │   ├── repositories/           # Git clone, SSRF, workspace
-│   │   ├── tools/                  # read-only tool registry
-│   │   ├── llm/                    # OpenAI Responses client
-│   │   └── agent/                  # prompts, limits, dispatch, loop
-│   ├── tests/
-│   ├── pyproject.toml
-│   └── uv.lock
-└── docs/
-    ├── architecture.md, agent-design.md, agent-optimization.md, security.md, …
-    ├── roadmap.md, decisions.md, deploy-track.md
-    └── phases/phase-01.md … phase-09.md
+backend/app/{api,agent,tools,repositories,retrieval,queue,workers,database,llm}/
+backend/static/          demo UI
+evals/                   evaluation harness
+.github/workflows/ci.yml
+infrastructure/aws/
+docs/                          # public docs; phase specs in phases/ are local-only
 ```
 
-Target additions by later phase (do not create placeholders early):
+## Constraints
 
-```text
-backend/app/retrieval/              Phase 8
-backend/app/workers/                Phase 9
-backend/app/queue/                  Phase 9
-backend/Dockerfile                  Deploy track / Phase 14a
-docker-compose.yml                  Deploy track / Phase 14a
-backend/app/sandbox/                Phase 10
-backend/app/observability/          Phase 13
-infrastructure/aws/                 Deploy track / Phase 14a
-.github/workflows/                  Phase 14b (14a may add build → ECR only)
-```
+| Area | Choice |
+| --- | --- |
+| Lang / deps | Python 3.12+, `uv` (no `requirements.txt`) |
+| API | FastAPI + Pydantic v2 |
+| LLM | OpenAI Responses SDK (no LangChain) |
+| Vectors | `text-embedding-3-small` + Pinecone |
+| DB / queue | Postgres; Redis + ARQ |
+| Sandbox / auth / OTel | Docker (10); Supabase JWT (12); Langfuse/OTel (13) |
+| UI / cloud | Static demo + Swagger; app infra on AWS; Supabase/Pinecone/OpenAI stay external |
 
-## Binding technology constraints
+## Principles
 
-These are project constraints. They are not defaults to be revisited casually. Changing one requires updating [decisions.md](decisions.md) with the reason.
-
-| Area | Decision | Constraint |
-| --- | --- | --- |
-| Language | Python 3.12+ | — |
-| Dependencies | `uv` with `pyproject.toml` and `uv.lock` | Never create `requirements.txt` |
-| Web framework | FastAPI with Pydantic v2 | — |
-| LLM interface | OpenAI Responses API via the official SDK | No LangChain or LangGraph in the initial implementation |
-| Embeddings | OpenAI `text-embedding-3-small` | Not before Phase 8 |
-| Vector store | Pinecone | Not before Phase 8; complements ripgrep rather than replacing it |
-| Database | PostgreSQL (local apt for development; Supabase for production), SQLAlchemy 2.x, Alembic | From Phase 3 |
-| Queue | Redis with ARQ | Phase 9 (implemented); not Celery |
-| Sandbox | Docker | Not before Phase 10; no unrestricted host shell execution ever |
-| Auth | Supabase Auth with JWT, optional | Not before Phase 12; no custom password authentication |
-| Observability | Langfuse and OpenTelemetry | Not before Phase 13 |
-| Frontend | None as product | Co-located static demo + Swagger; domain DNS may use Vercel (D10/D28); no Next.js app |
-| Cloud | AWS for application infrastructure | Managed third-party services remain external |
-
-The last row deserves emphasis: "use AWS" means the application's own infrastructure is deployed on AWS. It does not mean every third-party service must be replaced with an AWS equivalent. Supabase, Pinecone, OpenAI, and GitHub remain external services.
-
-## Design principles
-
-1. Keep FastAPI as the application layer. External managed services are dependencies, not the backend.
-2. The LLM never executes arbitrary code directly. It requests tool calls; the platform decides whether and how to honor them.
-3. Tools are explicit, typed, and permission-controlled.
-4. Repository code and content are untrusted input.
-5. Maintain the layer separation described above.
-6. Start with a simple custom agent loop. Adopt a framework only when the workflow demonstrably justifies it.
-7. Use Pinecone only where semantic retrieval provides real value over lexical search.
-8. Application state lives in PostgreSQL, never in Pinecone.
-9. Do not add authentication until multi-user functionality requires it.
-10. Do not build a frontend.
-11. Prefer incremental complexity. Every infrastructure component must have a concrete, current purpose.
-12. The MVP is runnable locally with minimal external infrastructure: Python, git, ripgrep, PostgreSQL, and an OpenAI API key.
+1. FastAPI owns the app; vendors are dependencies.
+2. LLM requests tools; platform decides.
+3. Tools are typed and permissioned; repo input is untrusted.
+4. Keep layers; add infra only when needed.
+5. State in Postgres, not Pinecone.
