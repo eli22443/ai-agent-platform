@@ -89,7 +89,7 @@ Repo content is untrusted (code + text). In place: URL/SSRF allow-list, path/sym
 
 - No auth / multi-tenant isolation
 - No Docker sandbox (read-only analysis only)
-- Eval harness exists ([`evals/`](evals/)); report template: [docs/evaluation-report.md](docs/evaluation-report.md) — results not committed yet
+- Eval harness + filled report: [`evals/`](evals/), [docs/evaluation-report.md](docs/evaluation-report.md) (N=15 internal run; not a formal benchmark)
 - Public demo can incur LLM/vector cost; no Langfuse/OTel yet
 
 ## Docs

@@ -1,7 +1,6 @@
 # Evaluation
 
-Design + runnable harness. **No committed results yet** — fill [evaluation-report.md](evaluation-report.md) after a paid run. Do not call this a formal industry benchmark (~15 tasks).
-
+Design + runnable harness. Results from a live-API full suite are recorded in [evaluation-report.md](evaluation-report.md) (N=15, not a formal industry benchmark).
 | | |
 | --- | --- |
 | Harness | [`evals/`](../evals/) — `tasks.yaml`, `run_eval.py` |

@@ -17,6 +17,6 @@ uv run --with pyyaml python ../evals/run_eval.py --list
 uv run --with pyyaml python ../evals/run_eval.py --api-base http://127.0.0.1:8000 --all
 ```
 
-Needs API + worker + OpenAI (Pinecone optional). Results → `evals/results/` (gitignored). Copy into [evaluation-report.md](../docs/evaluation-report.md).
+Needs API + worker + OpenAI (Pinecone optional). Results land in `evals/results/` (gitignored). Suite numbers for the live demo run are in [evaluation-report.md](../docs/evaluation-report.md).
 
 **Metrics:** completion, latency, iterations, tokens, tool calls, halt reason, heuristic path checks, failure causes. Heuristics ≠ human correctness.
