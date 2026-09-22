@@ -6,8 +6,6 @@ A deployed AI agent that asynchronously analyzes public Git repositories with LL
 
 ![Demo UI — completed task](docs/assets/demo-ui.png)
 
-![Demo result — grounded answer with citations](docs/assets/demo-result.png)
-
 ```text
 Repository:  https://github.com/example/project
 Instruction: Find why the authentication tests are failing and explain how to fix them.
