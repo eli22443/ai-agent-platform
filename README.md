@@ -4,7 +4,9 @@ A deployed AI agent that asynchronously analyzes public Git repositories with LL
 
 **Live demo:** [https://api.airepoagent.app](https://api.airepoagent.app) · [Swagger](https://api.airepoagent.app/docs) · [Health](https://api.airepoagent.app/health)
 
-![Demo UI](docs/assets/demo-ui.png)
+![Demo UI — completed task](docs/assets/demo-ui.png)
+
+![Demo result — grounded answer with citations](docs/assets/demo-result.png)
 
 ```text
 Repository:  https://github.com/example/project
