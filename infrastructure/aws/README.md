@@ -414,6 +414,43 @@ While running, expect charges for: **ALB**, **Fargate × 2** (0.25 vCPU / 0.5 GB
 
 This public-subnet ECS layout is appropriate for a **development/demo** deployment. It is cheaper than private tasks + NAT, with a larger network attack surface — mitigate with security groups as above. Tear down when idle.
 
+### Local start/stop schedule (ECS + Redis)
+
+For demo hours **09:00–18:00 Asia/Jerusalem** (weekdays), scale Fargate to zero and delete/recreate ElastiCache. The **ALB stays up** (avoids DNS/CNAME churn for `api.airepoagent.app`).
+
+Redis is an ElastiCache **replication group** `ai-agent-redis` (member node `ai-agent-redis-001`). Scripts use `create/delete/describe-replication-group`, not standalone cache-cluster APIs.
+
+| Script | Action |
+| --- | --- |
+| [`status.sh`](status.sh) | ECS counts, Redis replication-group status/endpoint, `GET /health` |
+| [`stop.sh`](stop.sh) | ECS desired → `0`, wait for drain, delete replication group `ai-agent-redis` |
+| [`start.sh`](start.sh) | Recreate replication group → update `REDIS_URL` → ECS desired → `1` + force redeploy |
+
+Config: [`config.env`](config.env) (pinned subnet group `ai-agent-redis`, SG `sg-039e24bab89dfef74`). Shared helpers: [`lib.sh`](lib.sh).
+
+**Prerequisites:** AWS CLI + credentials that can call ECS, ElastiCache, Secrets Manager, and EC2 `DescribeSecurityGroups` in `eu-north-1`. `python3` (JSON secret merge). Machine must be awake when cron fires (WSL/laptop sleep will skip runs).
+
+```bash
+./infrastructure/aws/status.sh
+./infrastructure/aws/stop.sh    # off hours
+./infrastructure/aws/start.sh   # on hours; Redis wake ~5–15 min
+```
+
+Example crontab (set system TZ to `Asia/Jerusalem`, or use `CRON_TZ`):
+
+```cron
+CRON_TZ=Asia/Jerusalem
+0 9 * * 1-5  cd /home/eli/projects/ai-agent-platform && ./infrastructure/aws/start.sh >> /tmp/ai-agent-aws-schedule.log 2>&1
+0 18 * * 1-5 cd /home/eli/projects/ai-agent-platform && ./infrastructure/aws/stop.sh  >> /tmp/ai-agent-aws-schedule.log 2>&1
+```
+
+**Caveats**
+
+- In-flight ARQ jobs are lost when Redis is deleted; durable task rows stay in Postgres (may need manual recovery if stuck `pending`/`running`).
+- After recreate, the primary endpoint may change; `start.sh` rewrites `REDIS_URL` in `ai-agent-platform/app` and force-redeploys ECS so tasks pick up the new secret.
+- ALB hourly charge continues while “off.”
+- Caller IAM needs: `ecs:UpdateService`, `ecs:DescribeServices`, `elasticache:CreateReplicationGroup`, `DeleteReplicationGroup`, `DescribeReplicationGroups`, `DescribeCacheClusters`, `DescribeCacheSubnetGroups`, `secretsmanager:GetSecretValue`, `PutSecretValue`, `ec2:DescribeSecurityGroups`.
+
 ---
 
 ## Teardown
