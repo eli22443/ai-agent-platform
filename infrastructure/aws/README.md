@@ -196,6 +196,7 @@ redis://ai-agent-redis.fberqq.ng.0001.eun1.cache.amazonaws.com:6379/0
 | --- | --- |
 | `ai-agent-ecs-task-execution-role` | ECR pull, CloudWatch logs, `secretsmanager:GetSecretValue` |
 | Task role | No extra AWS API permissions in 14a |
+| GitHub Actions deploy role (OIDC) | ECR push + `ecs:UpdateService` — see [OIDC CI deploy](#oidc-ci-deploy) |
 
 Execution-role secret resource pattern (suffix wildcard required):
 
@@ -487,16 +488,29 @@ NAT Gateway and its EIPs are already gone — skip recreating them during teardo
 
 ---
 
-## Phase 14b (next)
+## OIDC CI deploy
 
-14a is the working baseline (including public HTTPS hostname). **14b** hardening (not done):
+Bare-minimum Phase 14b: on push to `main`/`master`, [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml) runs tests + docker build, then assumes an IAM role via **GitHub OIDC** (no long-lived access keys), pushes `ai-agent-platform:latest` to ECR, and force-redeploys the API and worker ECS services. PRs use [`.github/workflows/tests.yml`](../../.github/workflows/tests.yml) only. Local deploys still work with [`docker.sh`](docker.sh).
 
-- GitHub Actions + OIDC → ECR/ECS  
-- Tighter IAM; auth / access control for the now-public API (Phase 12 or interim ALB restriction)  
-- Documented networking/cost (NAT already removed; revisit private ECS if hardening requires it)  
-- Redis encryption in transit  
-- Supabase pooler verification (O7)  
-- Autoscaling, alarms, rollback, secrets rotation, observability  
-- Optional: apex `airepoagent.app` frontend host  
+### One-time AWS + GitHub setup
+
+1. **OIDC identity provider** (IAM → Identity providers), if the account does not already have one for GitHub:
+   - Provider URL: `https://token.actions.githubusercontent.com`
+   - Audience: `sts.amazonaws.com`
+2. **IAM role** for Actions (e.g. `ai-agent-github-deploy`):
+   - Trust policy: federated principal = that OIDC provider; condition `token.actions.githubusercontent.com:sub` limited to this repository and `ref:refs/heads/main` (and `master` if used). Example subject: `repo:<OWNER>/<REPO>:ref:refs/heads/main`.
+   - Permissions (least privilege):
+     - ECR: `GetAuthorizationToken` (account); on repository `ai-agent-platform`: `BatchCheckLayerAvailability`, `BatchGetImage`, `CompleteLayerUpload`, `GetDownloadUrlForLayer`, `InitiateLayerUpload`, `PutImage`, `UploadLayerPart`
+     - ECS: `UpdateService`, `DescribeServices` on cluster `ai-agent-cluster` and services `ai-agent-api-service-2sdqusn9` / `ai-agent-worker-service`
+3. **GitHub Actions variable** `AWS_ROLE_ARN` = the role ARN (Settings → Secrets and variables → Actions → Variables).
+
+After setup, a push to `main` should deploy; verify with `curl https://api.airepoagent.app/health`.
+
+### Still open (rest of 14b)
+
+- Auth / access control for the public API (Phase 12 or interim)
+- Networking/cost polish; Redis encryption in transit; Supabase pooler (O7)
+- Autoscaling, alarms, rollback, secrets rotation, observability
+- Optional: apex `airepoagent.app` frontend host
 
 See [roadmap.md](../../docs/roadmap.md).

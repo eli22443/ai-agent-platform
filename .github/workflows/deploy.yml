@@ -1,0 +1,120 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, master]
+
+env:
+  AWS_REGION: eu-north-1
+  ECR_REPOSITORY: ai-agent-platform
+  ECS_CLUSTER: ai-agent-cluster
+  ECS_API_SERVICE: ai-agent-api-service-2sdqusn9
+  ECS_WORKER_SERVICE: ai-agent-worker-service
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ai_agent
+          POSTGRES_PASSWORD: ai_agent
+          POSTGRES_DB: ai_agent_platform_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ai_agent -d ai_agent_platform_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends git ripgrep
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          working-directory: backend
+
+      - name: Set up Python
+        run: uv python install 3.12
+        working-directory: backend
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+        working-directory: backend
+
+      - name: Run tests
+        run: uv run pytest
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://ai_agent:ai_agent@127.0.0.1:5432/ai_agent_platform_test
+          RETRIEVAL_INDEX_ENABLED: "false"
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build app image
+        run: docker build -f backend/Dockerfile backend
+
+  deploy:
+    name: Deploy to ECS
+    needs: [test, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE: ${{ env.ECR_REPOSITORY }}
+        run: |
+          docker build -t "${IMAGE}:latest" backend
+          docker tag "${IMAGE}:latest" "${REGISTRY}/${IMAGE}:latest"
+          docker push "${REGISTRY}/${IMAGE}:latest"
+
+      - name: Force new ECS deployment
+        run: |
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_API_SERVICE}" \
+            --force-new-deployment \
+            --region "${AWS_REGION}" \
+            --query 'service.serviceName' \
+            --output text
+
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_WORKER_SERVICE}" \
+            --force-new-deployment \
+            --region "${AWS_REGION}" \
+            --query 'service.serviceName' \
+            --output text
