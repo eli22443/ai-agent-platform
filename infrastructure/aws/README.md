@@ -7,10 +7,12 @@ Console-first record of the first cloud deployment. Product guide: [docs/deploy-
 | Approach | Detail |
 | --- | --- |
 | Infrastructure | AWS Console |
-| Image publish | One CLI step: build/push to ECR |
-| IaC | None in 14a (no Terraform/CDK/CloudFormation) |
+| Image publish | Local [`docker.sh`](docker.sh) or GitHub Actions OIDC ([`deploy.yml`](../../.github/workflows/deploy.yml)) |
+| IaC | None (no Terraform/CDK/CloudFormation) |
 | External | Supabase Postgres, OpenAI, Pinecone, GitHub (D24) |
 | Public URL | `https://api.airepoagent.app` (ACM + Vercel DNS → ALB) |
+| GitHub repo | `eli22443/ai-agent-platform` (default branch **`master`**) |
+| AWS account | `099357569747` |
 
 Region: **`eu-north-1`** (Europe / Stockholm).
 
@@ -194,20 +196,20 @@ redis://ai-agent-redis.fberqq.ng.0001.eun1.cache.amazonaws.com:6379/0
 
 | Role | Purpose |
 | --- | --- |
-| `ai-agent-ecs-task-execution-role` | ECR pull, CloudWatch logs, `secretsmanager:GetSecretValue` |
-| Task role | No extra AWS API permissions in 14a |
-| GitHub Actions deploy role (OIDC) | ECR push + `ecs:UpdateService` — see [OIDC CI deploy](#oidc-ci-deploy) |
+| `ai-agent-ecs-task-execution-role` | ECR pull, CloudWatch logs, `secretsmanager:GetSecretValue` (`arn:aws:iam::099357569747:role/ai-agent-ecs-task-execution-role`) |
+| Task role | Empty on both task definitions (no extra AWS API permissions) |
+| `GitHubActionsAiAgentDeploy` | OIDC deploy from Actions — see [OIDC CI deploy](#oidc-ci-deploy) |
 
 Execution-role secret resource pattern (suffix wildcard required):
 
 ```text
-arn:aws:secretsmanager:eu-north-1:<ACCOUNT>:secret:ai-agent-platform/*
+arn:aws:secretsmanager:eu-north-1:099357569747:secret:ai-agent-platform/*
 ```
 
 JSON secret injection example:
 
 ```text
-arn:aws:secretsmanager:eu-north-1:<ACCOUNT>:secret:ai-agent-platform/app-XXXX:DATABASE_URL::
+arn:aws:secretsmanager:eu-north-1:099357569747:secret:ai-agent-platform/app-XXXX:DATABASE_URL::
 ```
 
 ### Security groups
@@ -256,9 +258,9 @@ Frequent `/health` lines are expected (ALB target-group checks).
 | --- | --- |
 | Cluster | `ai-agent-cluster` (Fargate) |
 | API service | `ai-agent-api-service-2sdqusn9` |
-| API task def | `ai-agent-api` (see current revision in console) |
+| API task def | `ai-agent-api:2` |
 | Worker service | `ai-agent-worker-service` |
-| Worker task def | `ai-agent-worker` (see current revision in console) |
+| Worker task def | `ai-agent-worker:2` |
 | Desired count | 1 each |
 | Networking | **Public** subnets; **Assign public IP ENABLED** |
 | Size | **0.25 vCPU / 0.5 GB** (both API and worker) |
@@ -490,21 +492,24 @@ NAT Gateway and its EIPs are already gone — skip recreating them during teardo
 
 ## OIDC CI deploy
 
-Bare-minimum Phase 14b: on push to `main`/`master`, [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml) runs tests + docker build, then assumes an IAM role via **GitHub OIDC** (no long-lived access keys), pushes `ai-agent-platform:latest` to ECR, and force-redeploys the API and worker ECS services. PRs use [`.github/workflows/tests.yml`](../../.github/workflows/tests.yml) only. Local deploys still work with [`docker.sh`](docker.sh).
+Bare-minimum Phase 14b: on push to **`master`** (also wired for `main`), [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml) runs tests + docker build, then assumes an IAM role via **GitHub OIDC** (no long-lived access keys), pushes `ai-agent-platform:latest` to ECR, and force-redeploys both ECS services. PRs use [`.github/workflows/tests.yml`](../../.github/workflows/tests.yml) only. Local deploys still work with [`docker.sh`](docker.sh).
 
-### One-time AWS + GitHub setup
+### As configured
 
-1. **OIDC identity provider** (IAM → Identity providers), if the account does not already have one for GitHub:
-   - Provider URL: `https://token.actions.githubusercontent.com`
-   - Audience: `sts.amazonaws.com`
-2. **IAM role** for Actions (e.g. `ai-agent-github-deploy`):
-   - Trust policy: federated principal = that OIDC provider; condition `token.actions.githubusercontent.com:sub` limited to this repository and `ref:refs/heads/main` (and `master` if used). Example subject: `repo:<OWNER>/<REPO>:ref:refs/heads/main`.
-   - Permissions (least privilege):
-     - ECR: `GetAuthorizationToken` (account); on repository `ai-agent-platform`: `BatchCheckLayerAvailability`, `BatchGetImage`, `CompleteLayerUpload`, `GetDownloadUrlForLayer`, `InitiateLayerUpload`, `PutImage`, `UploadLayerPart`
-     - ECS: `UpdateService`, `DescribeServices` on cluster `ai-agent-cluster` and services `ai-agent-api-service-2sdqusn9` / `ai-agent-worker-service`
-3. **GitHub Actions variable** `AWS_ROLE_ARN` = the role ARN (Settings → Secrets and variables → Actions → Variables).
+| Item | Value |
+| --- | --- |
+| OIDC provider | `token.actions.githubusercontent.com` (audience `sts.amazonaws.com`) — already in account |
+| Deploy role | `GitHubActionsAiAgentDeploy` |
+| Role ARN | `arn:aws:iam::099357569747:role/GitHubActionsAiAgentDeploy` |
+| Trust subject | Immutable GitHub OIDC format for this repo + `master`: `repo:eli22443@191135914/ai-agent-platform@1336811507:ref:refs/heads/master` |
+| Repo OIDC subject prefix | `repo:eli22443@191135914/ai-agent-platform@1336811507` |
+| Role policies | AWS-managed `AmazonEC2ContainerRegistryPowerUser` + custom `AiAgentECSDeployPolicy` (`ecs:DescribeServices` / `ecs:UpdateService` on the two services) |
+| `iam:PassRole` | **Omitted** — workflow only pushes an image and force-redeploys existing services; it does not register new task definitions |
+| GitHub Actions variable | `AWS_ROLE_ARN` = the role ARN above (Settings → Secrets and variables → Actions → Variables) |
 
-After setup, a push to `main` should deploy; verify with `curl https://api.airepoagent.app/health`.
+Workflow env (must match live names): `AWS_REGION=eu-north-1`, `ECR_REPOSITORY=ai-agent-platform`, `ECS_CLUSTER=ai-agent-cluster`, `ECS_API_SERVICE=ai-agent-api-service-2sdqusn9`, `ECS_WORKER_SERVICE=ai-agent-worker-service`.
+
+Verify after a green deploy: `curl https://api.airepoagent.app/health`.
 
 ### Still open (rest of 14b)
 
