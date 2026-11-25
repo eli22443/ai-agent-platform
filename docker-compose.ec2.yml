@@ -1,0 +1,33 @@
+# EC2 demo override. Layer on top of docker-compose.yml (which stays local-only):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.ec2.yml \
+#     --env-file backend/.env up -d --build
+#
+# Nothing is published on the host: Cloudflare Tunnel reaches the API over the
+# compose network (http://api:8000). `ports: !reset []` requires a current
+# Compose V2 plugin (installed by infrastructure/ec2/user-data.sh).
+
+services:
+  redis:
+    ports: !reset []
+    restart: unless-stopped
+
+  api:
+    ports: !reset []
+    environment:
+      APP_ENV: production
+    restart: unless-stopped
+
+  worker:
+    environment:
+      APP_ENV: production
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - api
+    restart: unless-stopped

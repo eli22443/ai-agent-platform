@@ -1,0 +1,18 @@
+[Unit]
+Description=AI agent platform (docker compose + Cloudflare Tunnel)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=HOME=/root
+TimeoutStartSec=1200
+TimeoutStopSec=120
+ExecStartPre=/usr/local/bin/ai-agent-render-env
+ExecStart=/usr/local/bin/ai-agent-compose up -d --build
+ExecStop=/usr/local/bin/ai-agent-compose down
+
+[Install]
+WantedBy=multi-user.target
