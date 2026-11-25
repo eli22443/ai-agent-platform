@@ -2,7 +2,9 @@
 
 A deployed AI agent that asynchronously analyzes public Git repositories with LLM tool calling, semantic retrieval, background workers, persistent task state, and AWS infrastructure.
 
-**Live demo:** [https://api.airepoagent.app](https://api.airepoagent.app) · [Swagger](https://api.airepoagent.app/docs) · [Health](https://api.airepoagent.app/health)
+**Live demo:** [https://api.airepo.app](https://api.airepo.app) · [Swagger](https://api.airepo.app/docs) · [Health](https://api.airepo.app/health)
+
+(On-demand EC2 + Compose + Cloudflare Tunnel. Start/stop: [infrastructure/ec2/README.md](infrastructure/ec2/README.md). `api.airepoagent.app` is the ECS/deploy-track hostname.)
 
 ![Demo UI — completed task](docs/assets/demo-ui.png)
 
@@ -11,7 +13,7 @@ Repository:  https://github.com/example/project
 Instruction: Find why the authentication tests are failing and explain how to fix them.
 ```
 
-**Status:** Phases 1–9 + deploy track 14a (ECS, ALB HTTPS). Working **demo**, not multi-tenant production — no app auth, no code-execution sandbox yet. Runbook: [infrastructure/aws/README.md](infrastructure/aws/README.md).
+**Status:** Phases 1–9 + deploy track 14a. Live demos on EC2 (`api.airepo.app`); ECS/ALB path documented for resume. Working **demo**, not multi-tenant production — no app auth, no code-execution sandbox yet.
 
 ## How it works
 
@@ -34,7 +36,7 @@ flowchart LR
 ## API examples
 
 ```bash
-curl -s -X POST https://api.airepoagent.app/tasks \
+curl -s -X POST https://api.airepo.app/tasks \
   -H 'Content-Type: application/json' \
   -d '{
     "repository_url": "https://github.com/microsoft/python-sample-vscode-fastapi-tutorial",
@@ -55,14 +57,18 @@ curl -s -X POST https://api.airepoagent.app/tasks \
 ```
 
 ```bash
-curl -s https://api.airepoagent.app/tasks/<task_id>
+curl -s https://api.airepo.app/tasks/<task_id>
 # → status: running | completed | failed; result when done
-curl -s https://api.airepoagent.app/tasks/<task_id>/runs
+curl -s https://api.airepo.app/tasks/<task_id>/runs
 ```
 
 `POST /tasks/{id}/run` → **410 Gone**. OpenAPI: `/docs`.
 
 ## AWS
+
+**Live demos:** EC2 (`t4g.small`) + Docker Compose + Cloudflare Tunnel → `api.airepo.app`. Runbook: [infrastructure/ec2/README.md](infrastructure/ec2/README.md).
+
+**Deploy-track / ECS resume** (`api.airepoagent.app`):
 
 ```mermaid
 flowchart TB
@@ -77,9 +83,9 @@ flowchart TB
     Worker --> Secrets
 ```
 
-ECS API + worker, ALB/ACM, Redis (ARQ), Supabase, Pinecone, Secrets Manager, CloudWatch. Details: [infrastructure/aws/README.md](infrastructure/aws/README.md), [docs/deploy-track.md](docs/deploy-track.md).
+Details: [infrastructure/aws/README.md](infrastructure/aws/README.md), [docs/deploy-track.md](docs/deploy-track.md).
 
-**Demo tradeoffs:** public ECS subnets (no NAT); **no authentication**.
+**Demo tradeoffs:** on-demand start/stop; **no authentication**.
 
 ## Security
 
@@ -101,11 +107,12 @@ Repo content is untrusted (code + text). In place: URL/SSRF allow-list, path/sym
 | [agent-design.md](docs/agent-design.md) | Tool loop |
 | [evaluation.md](docs/evaluation.md) / [evals/](evals/) | Eval design + harness |
 | [roadmap.md](docs/roadmap.md) / [decisions.md](docs/decisions.md) | Phases / ADRs |
-| [deploy-track.md](docs/deploy-track.md) / [aws README](infrastructure/aws/README.md) | Deploy |
+| [ec2 README](infrastructure/ec2/README.md) | Live demo host |
+| [deploy-track.md](docs/deploy-track.md) / [aws README](infrastructure/aws/README.md) | Deploy track / ECS |
 
 ## Stack
 
-Python 3.12 · FastAPI · Postgres/Supabase · Redis/ARQ · Git + ripgrep · OpenAI · Pinecone · ECS/ALB. Static demo at `/`; no LangChain.
+Python 3.12 · FastAPI · Postgres/Supabase · Redis/ARQ · Git + ripgrep · OpenAI · Pinecone · EC2/Compose (live) · ECS/ALB (deploy track). Static demo at `/`; no LangChain.
 
 ## Local
 
