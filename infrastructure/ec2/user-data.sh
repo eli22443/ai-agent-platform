@@ -47,11 +47,13 @@ chmod +x "${plugin_dir}/docker-compose"
 
 buildx_tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
   https://github.com/docker/buildx/releases/latest | sed 's#.*/tag/##')"
+buildx_name="buildx-${buildx_tag}.${buildx_arch}"
 buildx_base="https://github.com/docker/buildx/releases/download/${buildx_tag}"
-curl -fsSL "${buildx_base}/buildx-${buildx_tag}.${buildx_arch}" -o "${plugin_dir}/docker-buildx"
+curl -fsSL "${buildx_base}/${buildx_name}" -o "${plugin_dir}/docker-buildx"
 curl -fsSL "${buildx_base}/checksums.txt" -o /tmp/buildx.checksums
-expected="$(awk -v f="buildx-${buildx_tag}.${buildx_arch}" '$2 == f {print $1}' /tmp/buildx.checksums)"
-[[ -n "${expected}" ]] || { echo "no buildx checksum for ${buildx_tag}" >&2; exit 1; }
+# checksums.txt uses BSD form: "<sha256> *<filename>"
+expected="$(awk -v f="${buildx_name}" '{n=$2; sub(/^\*/,"",n); if (n==f) {print $1; exit}}' /tmp/buildx.checksums)"
+[[ -n "${expected}" ]] || { echo "no buildx checksum for ${buildx_name}" >&2; exit 1; }
 echo "${expected}  ${plugin_dir}/docker-buildx" | sha256sum -c -
 chmod +x "${plugin_dir}/docker-buildx"
 
